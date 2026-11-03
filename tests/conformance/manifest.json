@@ -2,483 +2,411 @@
   "draft7": {
     "required_groups": 258,
     "required_cases": 925,
+    "optional_cases": 17,
     "optional_skips": [
       {
         "path": "optional/bignum.json",
         "cases": 9,
-        "reason": "optional behavior not claimed; see support documentation"
+        "reason": "arbitrary-precision and overflow semantics exceed the i64/binary64 JSON DOM contract"
       },
       {
         "path": "optional/content.json",
         "cases": 10,
-        "reason": "optional behavior not claimed; see support documentation"
-      },
-      {
-        "path": "optional/cross-draft.json",
-        "cases": 2,
-        "reason": "optional behavior not claimed; see support documentation"
+        "reason": "content decoding and validation are annotations only"
       },
       {
         "path": "optional/ecmascript-regex.json",
         "cases": 74,
-        "reason": "optional behavior not claimed; see support documentation"
+        "reason": "the documented regex subset excludes lookaround/backreferences and some Unicode property syntax"
       },
       {
         "path": "optional/float-overflow.json",
         "cases": 1,
-        "reason": "optional behavior not claimed; see support documentation"
+        "reason": "arbitrary-precision and overflow semantics exceed the i64/binary64 JSON DOM contract"
       },
       {
         "path": "optional/format/date-time.json",
         "cases": 47,
-        "reason": "optional behavior not claimed; see support documentation"
+        "reason": "format is annotation-only; format assertions are not implemented"
       },
       {
         "path": "optional/format/date.json",
         "cases": 81,
-        "reason": "optional behavior not claimed; see support documentation"
+        "reason": "format is annotation-only; format assertions are not implemented"
       },
       {
         "path": "optional/format/ecmascript-regex.json",
         "cases": 12,
-        "reason": "optional behavior not claimed; see support documentation"
+        "reason": "format is annotation-only; format assertions are not implemented"
       },
       {
         "path": "optional/format/email.json",
         "cases": 71,
-        "reason": "optional behavior not claimed; see support documentation"
+        "reason": "format is annotation-only; format assertions are not implemented"
       },
       {
         "path": "optional/format/hostname.json",
         "cases": 66,
-        "reason": "optional behavior not claimed; see support documentation"
+        "reason": "format is annotation-only; format assertions are not implemented"
       },
       {
         "path": "optional/format/idn-email.json",
         "cases": 24,
-        "reason": "optional behavior not claimed; see support documentation"
+        "reason": "format is annotation-only; format assertions are not implemented"
       },
       {
         "path": "optional/format/idn-hostname.json",
         "cases": 101,
-        "reason": "optional behavior not claimed; see support documentation"
+        "reason": "format is annotation-only; format assertions are not implemented"
       },
       {
         "path": "optional/format/ipv4.json",
         "cases": 41,
-        "reason": "optional behavior not claimed; see support documentation"
+        "reason": "format is annotation-only; format assertions are not implemented"
       },
       {
         "path": "optional/format/ipv6.json",
         "cases": 51,
-        "reason": "optional behavior not claimed; see support documentation"
+        "reason": "format is annotation-only; format assertions are not implemented"
       },
       {
         "path": "optional/format/iri-reference.json",
         "cases": 21,
-        "reason": "optional behavior not claimed; see support documentation"
+        "reason": "format is annotation-only; format assertions are not implemented"
       },
       {
         "path": "optional/format/iri.json",
         "cases": 26,
-        "reason": "optional behavior not claimed; see support documentation"
+        "reason": "format is annotation-only; format assertions are not implemented"
       },
       {
         "path": "optional/format/json-pointer.json",
         "cases": 40,
-        "reason": "optional behavior not claimed; see support documentation"
+        "reason": "format is annotation-only; format assertions are not implemented"
       },
       {
         "path": "optional/format/regex.json",
         "cases": 18,
-        "reason": "optional behavior not claimed; see support documentation"
+        "reason": "format is annotation-only; format assertions are not implemented"
       },
       {
         "path": "optional/format/relative-json-pointer.json",
         "cases": 26,
-        "reason": "optional behavior not claimed; see support documentation"
+        "reason": "format is annotation-only; format assertions are not implemented"
       },
       {
         "path": "optional/format/time.json",
         "cases": 56,
-        "reason": "optional behavior not claimed; see support documentation"
+        "reason": "format is annotation-only; format assertions are not implemented"
       },
       {
         "path": "optional/format/unknown.json",
         "cases": 7,
-        "reason": "optional behavior not claimed; see support documentation"
+        "reason": "format is annotation-only; format assertions are not implemented"
       },
       {
         "path": "optional/format/uri-reference.json",
         "cases": 31,
-        "reason": "optional behavior not claimed; see support documentation"
+        "reason": "format is annotation-only; format assertions are not implemented"
       },
       {
         "path": "optional/format/uri-template.json",
         "cases": 48,
-        "reason": "optional behavior not claimed; see support documentation"
+        "reason": "format is annotation-only; format assertions are not implemented"
       },
       {
         "path": "optional/format/uri.json",
         "cases": 48,
-        "reason": "optional behavior not claimed; see support documentation"
+        "reason": "format is annotation-only; format assertions are not implemented"
       },
       {
         "path": "optional/id.json",
         "cases": 7,
-        "reason": "optional behavior not claimed; see support documentation"
-      },
-      {
-        "path": "optional/non-bmp-regex.json",
-        "cases": 12,
-        "reason": "optional behavior not claimed; see support documentation"
-      },
-      {
-        "path": "optional/unknownKeyword.json",
-        "cases": 3,
-        "reason": "optional behavior not claimed; see support documentation"
+        "reason": "permissive legacy identifier syntax is not supported"
       }
     ]
   },
   "draft2019-09": {
     "required_groups": 373,
     "required_cases": 1257,
+    "optional_cases": 67,
     "optional_skips": [
       {
         "path": "optional/anchor.json",
         "cases": 4,
-        "reason": "optional behavior not claimed; see support documentation"
+        "reason": "permissive legacy identifier syntax is not supported"
       },
       {
         "path": "optional/bignum.json",
         "cases": 9,
-        "reason": "optional behavior not claimed; see support documentation"
-      },
-      {
-        "path": "optional/cross-draft.json",
-        "cases": 3,
-        "reason": "optional behavior not claimed; see support documentation"
-      },
-      {
-        "path": "optional/dependencies-compatibility.json",
-        "cases": 36,
-        "reason": "optional behavior not claimed; see support documentation"
+        "reason": "arbitrary-precision and overflow semantics exceed the i64/binary64 JSON DOM contract"
       },
       {
         "path": "optional/ecmascript-regex.json",
         "cases": 74,
-        "reason": "optional behavior not claimed; see support documentation"
+        "reason": "the documented regex subset excludes lookaround/backreferences and some Unicode property syntax"
       },
       {
         "path": "optional/float-overflow.json",
         "cases": 1,
-        "reason": "optional behavior not claimed; see support documentation"
+        "reason": "arbitrary-precision and overflow semantics exceed the i64/binary64 JSON DOM contract"
       },
       {
         "path": "optional/format/date-time.json",
         "cases": 47,
-        "reason": "optional behavior not claimed; see support documentation"
+        "reason": "format is annotation-only; format assertions are not implemented"
       },
       {
         "path": "optional/format/date.json",
         "cases": 81,
-        "reason": "optional behavior not claimed; see support documentation"
+        "reason": "format is annotation-only; format assertions are not implemented"
       },
       {
         "path": "optional/format/duration.json",
         "cases": 51,
-        "reason": "optional behavior not claimed; see support documentation"
+        "reason": "format is annotation-only; format assertions are not implemented"
       },
       {
         "path": "optional/format/ecmascript-regex.json",
         "cases": 12,
-        "reason": "optional behavior not claimed; see support documentation"
+        "reason": "format is annotation-only; format assertions are not implemented"
       },
       {
         "path": "optional/format/email.json",
         "cases": 71,
-        "reason": "optional behavior not claimed; see support documentation"
+        "reason": "format is annotation-only; format assertions are not implemented"
       },
       {
         "path": "optional/format/hostname.json",
         "cases": 66,
-        "reason": "optional behavior not claimed; see support documentation"
+        "reason": "format is annotation-only; format assertions are not implemented"
       },
       {
         "path": "optional/format/idn-email.json",
         "cases": 24,
-        "reason": "optional behavior not claimed; see support documentation"
+        "reason": "format is annotation-only; format assertions are not implemented"
       },
       {
         "path": "optional/format/idn-hostname.json",
         "cases": 101,
-        "reason": "optional behavior not claimed; see support documentation"
+        "reason": "format is annotation-only; format assertions are not implemented"
       },
       {
         "path": "optional/format/ipv4.json",
         "cases": 41,
-        "reason": "optional behavior not claimed; see support documentation"
+        "reason": "format is annotation-only; format assertions are not implemented"
       },
       {
         "path": "optional/format/ipv6.json",
         "cases": 51,
-        "reason": "optional behavior not claimed; see support documentation"
+        "reason": "format is annotation-only; format assertions are not implemented"
       },
       {
         "path": "optional/format/iri-reference.json",
         "cases": 21,
-        "reason": "optional behavior not claimed; see support documentation"
+        "reason": "format is annotation-only; format assertions are not implemented"
       },
       {
         "path": "optional/format/iri.json",
         "cases": 26,
-        "reason": "optional behavior not claimed; see support documentation"
+        "reason": "format is annotation-only; format assertions are not implemented"
       },
       {
         "path": "optional/format/json-pointer.json",
         "cases": 40,
-        "reason": "optional behavior not claimed; see support documentation"
+        "reason": "format is annotation-only; format assertions are not implemented"
       },
       {
         "path": "optional/format/regex.json",
         "cases": 18,
-        "reason": "optional behavior not claimed; see support documentation"
+        "reason": "format is annotation-only; format assertions are not implemented"
       },
       {
         "path": "optional/format/relative-json-pointer.json",
         "cases": 26,
-        "reason": "optional behavior not claimed; see support documentation"
+        "reason": "format is annotation-only; format assertions are not implemented"
       },
       {
         "path": "optional/format/time.json",
         "cases": 56,
-        "reason": "optional behavior not claimed; see support documentation"
+        "reason": "format is annotation-only; format assertions are not implemented"
       },
       {
         "path": "optional/format/unknown.json",
         "cases": 7,
-        "reason": "optional behavior not claimed; see support documentation"
+        "reason": "format is annotation-only; format assertions are not implemented"
       },
       {
         "path": "optional/format/uri-reference.json",
         "cases": 31,
-        "reason": "optional behavior not claimed; see support documentation"
+        "reason": "format is annotation-only; format assertions are not implemented"
       },
       {
         "path": "optional/format/uri-template.json",
         "cases": 48,
-        "reason": "optional behavior not claimed; see support documentation"
+        "reason": "format is annotation-only; format assertions are not implemented"
       },
       {
         "path": "optional/format/uri.json",
         "cases": 48,
-        "reason": "optional behavior not claimed; see support documentation"
+        "reason": "format is annotation-only; format assertions are not implemented"
       },
       {
         "path": "optional/format/uuid.json",
         "cases": 29,
-        "reason": "optional behavior not claimed; see support documentation"
+        "reason": "format is annotation-only; format assertions are not implemented"
       },
       {
         "path": "optional/id.json",
         "cases": 3,
-        "reason": "optional behavior not claimed; see support documentation"
-      },
-      {
-        "path": "optional/no-schema.json",
-        "cases": 3,
-        "reason": "optional behavior not claimed; see support documentation"
-      },
-      {
-        "path": "optional/non-bmp-regex.json",
-        "cases": 12,
-        "reason": "optional behavior not claimed; see support documentation"
-      },
-      {
-        "path": "optional/refOfUnknownKeyword.json",
-        "cases": 10,
-        "reason": "optional behavior not claimed; see support documentation"
-      },
-      {
-        "path": "optional/unknownKeyword.json",
-        "cases": 3,
-        "reason": "optional behavior not claimed; see support documentation"
+        "reason": "permissive legacy identifier syntax is not supported"
       }
     ]
   },
   "draft2020-12": {
     "required_groups": 384,
     "required_cases": 1298,
+    "optional_cases": 31,
     "optional_skips": [
       {
         "path": "optional/anchor.json",
         "cases": 4,
-        "reason": "optional behavior not claimed; see support documentation"
+        "reason": "permissive legacy identifier syntax is not supported"
       },
       {
         "path": "optional/bignum.json",
         "cases": 9,
-        "reason": "optional behavior not claimed; see support documentation"
-      },
-      {
-        "path": "optional/cross-draft.json",
-        "cases": 1,
-        "reason": "optional behavior not claimed; see support documentation"
+        "reason": "arbitrary-precision and overflow semantics exceed the i64/binary64 JSON DOM contract"
       },
       {
         "path": "optional/dependencies-compatibility.json",
         "cases": 36,
-        "reason": "optional behavior not claimed; see support documentation"
-      },
-      {
-        "path": "optional/dynamicRef.json",
-        "cases": 2,
-        "reason": "optional behavior not claimed; see support documentation"
+        "reason": "legacy dependencies compatibility is not enabled in draft 2020-12"
       },
       {
         "path": "optional/ecmascript-regex.json",
         "cases": 74,
-        "reason": "optional behavior not claimed; see support documentation"
+        "reason": "the documented regex subset excludes lookaround/backreferences and some Unicode property syntax"
       },
       {
         "path": "optional/float-overflow.json",
         "cases": 1,
-        "reason": "optional behavior not claimed; see support documentation"
+        "reason": "arbitrary-precision and overflow semantics exceed the i64/binary64 JSON DOM contract"
       },
       {
         "path": "optional/format/date-time.json",
         "cases": 47,
-        "reason": "optional behavior not claimed; see support documentation"
+        "reason": "format is annotation-only; format assertions are not implemented"
       },
       {
         "path": "optional/format/date.json",
         "cases": 81,
-        "reason": "optional behavior not claimed; see support documentation"
+        "reason": "format is annotation-only; format assertions are not implemented"
       },
       {
         "path": "optional/format/duration.json",
         "cases": 51,
-        "reason": "optional behavior not claimed; see support documentation"
+        "reason": "format is annotation-only; format assertions are not implemented"
       },
       {
         "path": "optional/format/ecmascript-regex.json",
         "cases": 12,
-        "reason": "optional behavior not claimed; see support documentation"
+        "reason": "format is annotation-only; format assertions are not implemented"
       },
       {
         "path": "optional/format/email.json",
         "cases": 71,
-        "reason": "optional behavior not claimed; see support documentation"
+        "reason": "format is annotation-only; format assertions are not implemented"
       },
       {
         "path": "optional/format/hostname.json",
         "cases": 66,
-        "reason": "optional behavior not claimed; see support documentation"
+        "reason": "format is annotation-only; format assertions are not implemented"
       },
       {
         "path": "optional/format/idn-email.json",
         "cases": 24,
-        "reason": "optional behavior not claimed; see support documentation"
+        "reason": "format is annotation-only; format assertions are not implemented"
       },
       {
         "path": "optional/format/idn-hostname.json",
         "cases": 101,
-        "reason": "optional behavior not claimed; see support documentation"
+        "reason": "format is annotation-only; format assertions are not implemented"
       },
       {
         "path": "optional/format/ipv4.json",
         "cases": 41,
-        "reason": "optional behavior not claimed; see support documentation"
+        "reason": "format is annotation-only; format assertions are not implemented"
       },
       {
         "path": "optional/format/ipv6.json",
         "cases": 51,
-        "reason": "optional behavior not claimed; see support documentation"
+        "reason": "format is annotation-only; format assertions are not implemented"
       },
       {
         "path": "optional/format/iri-reference.json",
         "cases": 21,
-        "reason": "optional behavior not claimed; see support documentation"
+        "reason": "format is annotation-only; format assertions are not implemented"
       },
       {
         "path": "optional/format/iri.json",
         "cases": 26,
-        "reason": "optional behavior not claimed; see support documentation"
+        "reason": "format is annotation-only; format assertions are not implemented"
       },
       {
         "path": "optional/format/json-pointer.json",
         "cases": 40,
-        "reason": "optional behavior not claimed; see support documentation"
+        "reason": "format is annotation-only; format assertions are not implemented"
       },
       {
         "path": "optional/format/regex.json",
         "cases": 18,
-        "reason": "optional behavior not claimed; see support documentation"
+        "reason": "format is annotation-only; format assertions are not implemented"
       },
       {
         "path": "optional/format/relative-json-pointer.json",
         "cases": 26,
-        "reason": "optional behavior not claimed; see support documentation"
+        "reason": "format is annotation-only; format assertions are not implemented"
       },
       {
         "path": "optional/format/time.json",
         "cases": 56,
-        "reason": "optional behavior not claimed; see support documentation"
+        "reason": "format is annotation-only; format assertions are not implemented"
       },
       {
         "path": "optional/format/unknown.json",
         "cases": 7,
-        "reason": "optional behavior not claimed; see support documentation"
+        "reason": "format is annotation-only; format assertions are not implemented"
       },
       {
         "path": "optional/format/uri-reference.json",
         "cases": 31,
-        "reason": "optional behavior not claimed; see support documentation"
+        "reason": "format is annotation-only; format assertions are not implemented"
       },
       {
         "path": "optional/format/uri-template.json",
         "cases": 48,
-        "reason": "optional behavior not claimed; see support documentation"
+        "reason": "format is annotation-only; format assertions are not implemented"
       },
       {
         "path": "optional/format/uri.json",
         "cases": 48,
-        "reason": "optional behavior not claimed; see support documentation"
+        "reason": "format is annotation-only; format assertions are not implemented"
       },
       {
         "path": "optional/format/uuid.json",
         "cases": 29,
-        "reason": "optional behavior not claimed; see support documentation"
+        "reason": "format is annotation-only; format assertions are not implemented"
       },
       {
         "path": "optional/format-assertion.json",
         "cases": 4,
-        "reason": "optional behavior not claimed; see support documentation"
+        "reason": "format is annotation-only; format assertions are not implemented"
       },
       {
         "path": "optional/id.json",
         "cases": 3,
-        "reason": "optional behavior not claimed; see support documentation"
-      },
-      {
-        "path": "optional/no-schema.json",
-        "cases": 3,
-        "reason": "optional behavior not claimed; see support documentation"
-      },
-      {
-        "path": "optional/non-bmp-regex.json",
-        "cases": 12,
-        "reason": "optional behavior not claimed; see support documentation"
-      },
-      {
-        "path": "optional/refOfUnknownKeyword.json",
-        "cases": 10,
-        "reason": "optional behavior not claimed; see support documentation"
-      },
-      {
-        "path": "optional/unknownKeyword.json",
-        "cases": 3,
-        "reason": "optional behavior not claimed; see support documentation"
+        "reason": "permissive legacy identifier syntax is not supported"
       }
     ]
   }

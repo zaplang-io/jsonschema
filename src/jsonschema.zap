@@ -1130,7 +1130,18 @@ def _resolve(Validator state, str base, str ref) -> str:
                 context = state.nodes[location]
     if not location in state.nodes:
         _check(raw, location, 0, context.draft, state)
-        _index(raw, location, context.base, context.draft, context.resource, state, 0)
+        _index(
+            raw,
+            location,
+            context.base,
+            context.draft,
+            context.resource,
+            state,
+            0,
+            context.validation,
+            context.applicator,
+            context.unevaluated,
+        )
     return location
 
 def _dynamic(Validator state, str target, str key, str ref) -> str:

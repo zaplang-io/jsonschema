@@ -11,7 +11,7 @@ cp "$root/tools/conformance.zap" "$build/main.zap"
 failed=0
 for pair in 'draft7 draft-07' 'draft2019-09 2019-09' 'draft2020-12 2020-12'; do
     set -- $pair
-    if ! SCHEMA_CORPUS="$root/tests/conformance/$1.json" SCHEMA_DRAFT="$2" timeout 180 "$build/conformance"; then
+    if ! SCHEMA_MANIFEST="$root/tests/conformance/manifest.json" SCHEMA_SUITE_KEY="$1" SCHEMA_CORPUS="$root/tests/conformance/$1.json" SCHEMA_DRAFT="$2" timeout 180 "$build/conformance"; then
         failed=1
     fi
 done

@@ -24,6 +24,11 @@ def main():
     auto schema = json.loads("{\"type\":\"integer\"}")
     assert jsonschema.is_valid(json.loads("42"), schema)
     assert not jsonschema.is_valid(json.loads("true"), schema)
+    auto schema2 = json.loads("{\"patternProperties\":{\"^item_[0-9]+$\":{\"type\":\"integer\"}},\"unevaluatedProperties\":false}")
+    dict[str, JsonValue] registry = {}
+    auto compiled = jsonschema.compile(schema2, registry)
+    assert jsonschema.is_valid_compiled(json.loads("{\"item_42\":1}"), compiled)
+    assert not jsonschema.is_valid_compiled(json.loads("{\"extra\":1}"), compiled)
     print("package consumer: PASS")
 ZAP
 (cd "$build" && "$zap" zenv create --no-venv && ZAP_ZENV="$build/zenv" "$zap" run src/main.zap)

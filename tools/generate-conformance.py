@@ -46,10 +46,34 @@ for draft in ['draft7','draft2019-09','draft2020-12']:
         for group in json.loads(file.read_text()):
             groups.append({'name':file.name+': '+group['description'],'schema':group['schema'],'registry':closure(group['schema']),'tests':group['tests']})
     (out/(draft+'.json')).write_text(json.dumps(groups,ensure_ascii=False,separators=(',',':'))+'\n')
+    required_groups=len(groups)
+    required_cases=sum(len(g['tests']) for g in groups)
+    selected={'optional/non-bmp-regex.json','optional/unknownKeyword.json','optional/refOfUnknownKeyword.json','optional/no-schema.json','optional/cross-draft.json','optional/dynamicRef.json'}
+    if draft=='draft2019-09':selected.add('optional/dependencies-compatibility.json')
     skipped=[]
+    optional_cases=0
     for file in sorted((suite/'tests'/draft/'optional').rglob('*.json')):
         count=sum(len(group['tests']) for group in json.loads(file.read_text()))
-        skipped.append({'path':str(file.relative_to(suite/'tests'/draft)),'cases':count,'reason':'optional behavior not claimed; see support documentation'})
-    manifest[draft]={'required_groups':len(groups),'required_cases':sum(len(g['tests']) for g in groups),'optional_skips':skipped}
+        relative=str(file.relative_to(suite/'tests'/draft))
+        if relative in selected:
+            for group in json.loads(file.read_text()):
+                groups.append({'name':relative+': '+group['description'],'schema':group['schema'],'registry':closure(group['schema']),'tests':group['tests'],'optional':True})
+            optional_cases+=count
+            continue
+        if '/format/' in relative or relative=='optional/format-assertion.json':
+            reason='format is annotation-only; format assertions are not implemented'
+        elif 'bignum' in relative or 'float-overflow' in relative:
+            reason='arbitrary-precision and overflow semantics exceed the i64/binary64 JSON DOM contract'
+        elif 'ecmascript-regex' in relative:
+            reason='the documented regex subset excludes lookaround/backreferences and some Unicode property syntax'
+        elif 'dependencies-compatibility' in relative:
+            reason='legacy dependencies compatibility is not enabled in draft 2020-12'
+        elif 'content' in relative:
+            reason='content decoding and validation are annotations only'
+        else:
+            reason='permissive legacy identifier syntax is not supported'
+        skipped.append({'path':relative,'cases':count,'reason':reason})
+    (out/(draft+'.json')).write_text(json.dumps(groups,ensure_ascii=False,separators=(',',':'))+'\n')
+    manifest[draft]={'required_groups':required_groups,'required_cases':required_cases,'optional_cases':optional_cases,'optional_skips':skipped}
 (out/'manifest.json').write_text(json.dumps(manifest,indent=2)+'\n')
 print(json.dumps({d:{k:v for k,v in m.items() if k!='optional_skips'} for d,m in manifest.items()}))
