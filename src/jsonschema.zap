@@ -187,16 +187,14 @@ def _check(JsonValue schema, str p, int64 depth):
             if _kind(v) != "array":
                 _bad(q, "expected array")
             auto vs = _array(v)
-            if k == "enum":
-                if len(vs) == 0:
-                    _bad(q, "enum must not be empty")
             for i in range(len(vs)):
                 if k == "required":
                     if _kind(vs[i]) != "string":
                         _bad(q, "required entries must be strings")
-                for j in range(i):
-                    if _equal(vs[i], vs[j]):
-                        _bad(q, "duplicate entry")
+                if k == "required":
+                    for j in range(i):
+                        if _equal(vs[i], vs[j]):
+                            _bad(q, "duplicate entry")
         elif k in ["properties", "$defs", "dependentSchemas"]:
             if _kind(v) != "object":
                 _bad(q, "expected schema map")
@@ -426,7 +424,17 @@ def _eval(
                     if name in fields:
                         for dep in _array(deps[name]):
                             if not _string(dep) in fields:
-                                _err(errors, ip, _ptr(sp, "dependentRequired"), name)
+                                errors.append(
+                                    ValidationError(
+                                        instance_path=ip,
+                                        schema_path=_ptr(
+                                            _ptr(sp, "dependentRequired"),
+                                            name,
+                                        ),
+                                        keyword="dependentRequired",
+                                        message="missing dependent property " + _string(dep),
+                                    ),
+                                )
             if "dependentSchemas" in s:
                 auto deps = _obj(s["dependentSchemas"])
                 for name in deps:

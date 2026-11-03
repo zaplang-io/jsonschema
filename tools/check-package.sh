@@ -26,4 +26,4 @@ def main():
     assert not jsonschema.is_valid(json.loads("true"), schema)
     print("package consumer: PASS")
 ZAP
-(cd "$build" && "$zap" zenv create --no-venv && "$zap" run src/main.zap)
+(cd "$build" && "$zap" zenv create --no-venv && ZAP_ZENV="$build/zenv" "$zap" run src/main.zap)
