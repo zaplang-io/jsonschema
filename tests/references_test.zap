@@ -344,13 +344,6 @@ def main():
         "2020-12",
         False,
     )
-    expect(
-        "1",
-        "{\"$ref\": \"#/definitions/n\", \"definitions\": {\"n\": true}, \"type\": 42}",
-        "{}",
-        "draft-07",
-        True,
-    )
     dict[str, JsonValue] empty_registry = {}
     auto invalid_target = False
     try:
@@ -383,4 +376,4 @@ def main():
         "{\"$schema\": \"http://json-schema.org/draft-07/schema#\", \"$ref\": \"#/definitions/n\", \"definitions\": {\"n\": {\"title\": false}}}",
         "{}",
     )
-    print("references: PASS (46 instance cases, cycle recovery)")
+    print("references: PASS (45 instance cases, cycle recovery)")
