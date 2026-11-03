@@ -11,4 +11,4 @@ for source in sorted((root / 'vendor/metaschemas').glob('*.json')):
     encoded = json.dumps(json.dumps(schema, separators=(',', ':'), ensure_ascii=False), ensure_ascii=False)
     lines.append(f'    schemas[{json.dumps(uri)}] = json.loads({encoded})')
 lines.append('    return schemas')
-(root / 'src/jsonschema/metaschemas.zap').write_text('\n'.join(lines) + '\n')
+(root / 'src/metaschemas.zap').write_text('\n'.join(lines) + '\n')

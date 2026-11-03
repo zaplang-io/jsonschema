@@ -147,6 +147,10 @@ def _check(JsonValue schema, str p, int64 depth, str draft):
         _bad(p, "schema must be an object or boolean")
     auto s = _obj(schema)
     draft = _dialect(s, draft)
+    if draft == "draft-07" and "$ref" in s:
+        if _kind(s["$ref"]) != "string":
+            _bad(p, "$ref must be a string")
+        return
     for k in s:
         if not _enabled(k, draft):
             continue
@@ -986,6 +990,15 @@ def _eval(
 ):
     if depth > 128:
         raise "EvaluationError: nesting exceeds 128"
+    # Embedded schema resources may declare a different dialect. Meta-schema
+    # recursion dispatches at full meta-schema roots, not vocabulary fragments.
+    if state.meta:
+        auto source_draft = state.nodes[sp].draft
+        if sp == _meta_uri(source_draft) + "#":
+            auto declared = _dialect(_obj(v), source_draft)
+            if declared != source_draft:
+                sp = _meta_uri(declared) + "#"
+                schema = state.nodes[sp].schema
     auto frame = json.dumps(JsonValue.Array([JsonValue.Str(sp), JsonValue.Str(ip)]))
     for i in range(state.active_count):
         if frame == state.active[i]:

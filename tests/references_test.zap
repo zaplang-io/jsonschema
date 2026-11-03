@@ -330,4 +330,18 @@ def main():
     bad("{}", "{\"https://example.com/other\": {\"type\": 1}}")
     bad("{\"anyOf\": [true, {\"$ref\": \"missing\"}]}", "{}")
     bad("{}", "{\"https://example.com/root\": true}")
-    print("references: PASS (43 instance cases)")
+    expect(
+        "[1]",
+        "{\"$defs\": {\"old\": {\"$id\": \"old\", \"$schema\": \"http://json-schema.org/draft-07/schema#\", \"items\": [{\"type\": \"integer\"}], \"additionalItems\": false}}, \"$ref\": \"old\"}",
+        "{}",
+        "2020-12",
+        True,
+    )
+    expect(
+        "[\"x\"]",
+        "{\"$defs\": {\"old\": {\"$id\": \"old\", \"$schema\": \"http://json-schema.org/draft-07/schema#\", \"items\": [{\"type\": \"integer\"}], \"additionalItems\": false}}, \"$ref\": \"old\"}",
+        "{}",
+        "2020-12",
+        False,
+    )
+    print("references: PASS (45 instance cases)")
