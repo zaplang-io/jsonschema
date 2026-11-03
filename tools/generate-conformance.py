@@ -6,14 +6,18 @@ from urllib.parse import urljoin, urldefrag
 root=Path(__file__).resolve().parent.parent
 suite=root/'vendor/test-suite'
 resources={}
+retrievals={}
 for path in (suite/'remotes').rglob('*.json'):
-    resources['http://localhost:1234/'+str(path.relative_to(suite/'remotes'))]=json.loads(path.read_text())
+    uri='http://localhost:1234/'+str(path.relative_to(suite/'remotes'))
+    resources[uri]=json.loads(path.read_text()); retrievals[uri]=uri
 for path in (root/'vendor/metaschemas').glob('*.json'):
-    doc=json.loads(path.read_text()); resources[doc['$id'].rstrip('#')]=doc
+    doc=json.loads(path.read_text()); uri=doc['$id'].rstrip('#'); resources[uri]=doc; retrievals[uri]=uri
 # Lookup canonical aliases, while retaining original resource contents.
 for uri,doc in list(resources.items()):
     if isinstance(doc,dict) and isinstance(doc.get('$id'),str):
-        resources.setdefault(urljoin(uri,doc['$id']).rstrip('#'),doc)
+        alias=urljoin(uri,doc['$id']).rstrip('#')
+        if alias not in resources:
+            resources[alias]=doc;retrievals[alias]=uri
 def closure(schema):
     found={};queue=[(schema,'')];seen=set()
     def walk(value,base):
@@ -27,7 +31,7 @@ def closure(schema):
                         # Standard meta-schemas are used internally for checks;
                         # explicit $refs still require them in the registry.
                         if keyword=='$schema' and uri.startswith(('https://json-schema.org/','http://json-schema.org/')):continue
-                        seen.add(uri);found[uri]=resources[uri];queue.append((resources[uri],uri))
+                        seen.add(uri);retrieval=retrievals[uri];found[retrieval]=resources[uri];queue.append((resources[uri],retrieval))
             for v in value.values():walk(v,base)
         elif isinstance(value,list):
             for v in value:walk(v,base)
