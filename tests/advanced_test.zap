@@ -68,6 +68,16 @@ def main():
     bad("{\"pattern\":\"(?=abc)\"}")
     bad("{\"pattern\":\"(a)\\\\1\"}")
     bad("{\"patternProperties\":{\"[\":true}}")
+    auto no_validation = json.loads(
+        "{\"$schema\": \"https://json-schema.org/draft/2020-12/schema\", \"$id\": \"https://example.com/no-validation\", \"$vocabulary\": {\"https://json-schema.org/draft/2020-12/vocab/core\": true, \"https://json-schema.org/draft/2020-12/vocab/applicator\": true, \"https://other.example/vocab/validation\": false}}",
+    )
+    auto custom = jsonschema.compile(
+        json.loads(
+            "{\"$schema\": \"https://example.com/no-validation\", \"properties\": {\"x\": {\"pattern\": \"[\", \"minimum\": \"ignored\"}}}",
+        ),
+        {"https://example.com/no-validation": no_validation},
+    )
+    assert jsonschema.is_valid_compiled(json.loads("{\"x\":1}"), custom)
     auto schema = json.loads(
         "{\"type\":\"object\",\"properties\":{\"name\":{\"pattern\":\"^(ab|é)+$\"},\"child\":{\"$ref\":\"#\"}},\"required\":[\"name\"],\"unevaluatedProperties\":false}",
     )

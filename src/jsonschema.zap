@@ -141,7 +141,16 @@ def _bad(str p, str msg):
 def _type_name(str t) -> bool:
     return t in ["null", "boolean", "integer", "number", "string", "array", "object"]
 
-def _check(JsonValue schema, str p, int64 depth, str draft, Validator state):
+def _check(
+    JsonValue schema,
+    str p,
+    int64 depth,
+    str draft,
+    Validator state,
+    bool validation = True,
+    bool applicator = True,
+    bool unevaluated = True,
+):
     if depth > 128:
         _bad(p, "schema nesting exceeds 128")
     if _kind(schema) == "boolean":
@@ -150,12 +159,18 @@ def _check(JsonValue schema, str p, int64 depth, str draft, Validator state):
         _bad(p, "schema must be an object or boolean")
     auto s = _obj(schema)
     draft = _dialect(s, draft, state)
+    validation = _feature(s, validation, state, "validation")
+    applicator = _feature(s, applicator, state, "applicator")
+    auto uneval_vocabulary = "unevaluated"
+    if draft == "2019-09":
+        uneval_vocabulary = "applicator"
+    unevaluated = _feature(s, unevaluated, state, uneval_vocabulary)
     if draft == "draft-07" and "$ref" in s:
         if _kind(s["$ref"]) != "string":
             _bad(p, "$ref must be a string")
         return
     for k in s:
-        if not _enabled(k, draft):
+        if not _enabled(k, draft) or not _keyword_enabled(k, validation, applicator, unevaluated):
             continue
         auto v = s[k]
         auto q = _ptr(p, k)
@@ -223,7 +238,16 @@ def _check(JsonValue schema, str p, int64 depth, str draft, Validator state):
             for name in fields:
                 if k == "patternProperties":
                     auto checked = pattern.compile(name)
-                _check(fields[name], _ptr(q, name), depth + 1, draft, state)
+                _check(
+                    fields[name],
+                    _ptr(q, name),
+                    depth + 1,
+                    draft,
+                    state,
+                    validation,
+                    applicator,
+                    unevaluated,
+                )
         elif k == "dependentRequired":
             if _kind(v) != "object":
                 _bad(q, "expected object")
@@ -237,6 +261,9 @@ def _check(JsonValue schema, str p, int64 depth, str draft, Validator state):
                     depth + 1,
                     draft,
                     state,
+                    validation,
+                    applicator,
+                    unevaluated,
                 )
         elif k in ["allOf", "anyOf", "oneOf", "prefixItems"]:
             if _kind(v) != "array":
@@ -245,7 +272,16 @@ def _check(JsonValue schema, str p, int64 depth, str draft, Validator state):
             if len(schemas) == 0:
                 _bad(q, "schema array must not be empty")
             for i in range(len(schemas)):
-                _check(schemas[i], _ptr(q, str(i)), depth + 1, draft, state)
+                _check(
+                    schemas[i],
+                    _ptr(q, str(i)),
+                    depth + 1,
+                    draft,
+                    state,
+                    validation,
+                    applicator,
+                    unevaluated,
+                )
         elif k == "dependencies":
             if draft != "2020-12":
                 if _kind(v) != "object":
@@ -260,20 +296,50 @@ def _check(JsonValue schema, str p, int64 depth, str draft, Validator state):
                             depth + 1,
                             draft,
                             state,
+                            validation,
+                            applicator,
+                            unevaluated,
                         )
                     else:
-                        _check(deps[name], _ptr(q, name), depth + 1, draft, state)
+                        _check(
+                            deps[name],
+                            _ptr(q, name),
+                            depth + 1,
+                            draft,
+                            state,
+                            validation,
+                            applicator,
+                            unevaluated,
+                        )
         elif k == "items":
             if draft != "2020-12" and _kind(v) == "array":
                 auto schemas = _array(v)
                 if len(schemas) == 0:
                     _bad(q, "tuple schema must not be empty")
                 for i in range(len(schemas)):
-                    _check(schemas[i], _ptr(q, str(i)), depth + 1, draft, state)
+                    _check(
+                        schemas[i],
+                        _ptr(q, str(i)),
+                        depth + 1,
+                        draft,
+                        state,
+                        validation,
+                        applicator,
+                        unevaluated,
+                    )
             else:
-                _check(v, q, depth + 1, draft, state)
+                _check(
+                    v,
+                    q,
+                    depth + 1,
+                    draft,
+                    state,
+                    validation,
+                    applicator,
+                    unevaluated,
+                )
         elif k in ["not", "if", "then", "else", "contains", "additionalProperties", "propertyNames", "additionalItems", "contentSchema", "unevaluatedItems", "unevaluatedProperties"]:
-            _check(v, q, depth + 1, draft, state)
+            _check(v, q, depth + 1, draft, state, validation, applicator, unevaluated)
 
 def _err(list[ValidationError] errors, str ip, str sp, str k):
     errors.append(
@@ -327,17 +393,7 @@ def _eval_body(
     auto s = _obj(schema)
     dict[str, JsonValue] active_keywords = {}
     for key in s:
-        auto enabled = True
-        if not node.validation:
-            if key in ["type", "enum", "const", "minimum", "maximum", "exclusiveMinimum", "exclusiveMaximum", "multipleOf", "minLength", "maxLength", "minItems", "maxItems", "uniqueItems", "minContains", "maxContains", "minProperties", "maxProperties", "required", "dependentRequired"]:
-                enabled = False
-        if not node.applicator:
-            if key in ["allOf", "anyOf", "oneOf", "not", "if", "then", "else", "properties", "patternProperties", "additionalProperties", "propertyNames", "dependentSchemas", "items", "prefixItems", "additionalItems", "contains", "dependencies"]:
-                enabled = False
-        if not node.unevaluated:
-            if key in ["unevaluatedProperties", "unevaluatedItems"]:
-                enabled = False
-        if enabled:
+        if _keyword_enabled(key, node.validation, node.applicator, node.unevaluated):
             active_keywords[key] = s[key]
     s = active_keywords
     for refkey in ["$ref", "$dynamicRef", "$recursiveRef"]:
@@ -1121,7 +1177,16 @@ def _resolve(Validator state, str base, str ref) -> str:
             if location in state.nodes:
                 context = state.nodes[location]
     if not location in state.nodes:
-        _check(raw, location, 0, context.draft, state)
+        _check(
+            raw,
+            location,
+            0,
+            context.draft,
+            state,
+            context.validation,
+            context.applicator,
+            context.unevaluated,
+        )
         _index(
             raw,
             location,
@@ -1287,6 +1352,9 @@ def compile(
                     0,
                     state.nodes[target].draft,
                     state,
+                    state.nodes[target].validation,
+                    state.nodes[target].applicator,
+                    state.nodes[target].unevaluated,
                 )
                 if not target in referenced:
                     referenced.append(target)
@@ -1462,3 +1530,21 @@ def _multiple(JsonValue value, JsonValue divisor) -> bool:
         return _num(value) == 0.0
     auto tolerance = math.fabs(quotient) * 0.0000000000000004440892098500626
     return math.fabs(quotient - nearest) <= tolerance
+
+
+def _keyword_enabled(
+    str key,
+    bool validation,
+    bool applicator,
+    bool unevaluated,
+) -> bool:
+    if not validation:
+        if key in ["type", "enum", "const", "minimum", "maximum", "exclusiveMinimum", "exclusiveMaximum", "multipleOf", "minLength", "maxLength", "pattern", "minItems", "maxItems", "uniqueItems", "minContains", "maxContains", "minProperties", "maxProperties", "required", "dependentRequired"]:
+            return False
+    if not applicator:
+        if key in ["allOf", "anyOf", "oneOf", "not", "if", "then", "else", "properties", "patternProperties", "additionalProperties", "propertyNames", "dependentSchemas", "items", "prefixItems", "additionalItems", "contains", "dependencies"]:
+            return False
+    if not unevaluated:
+        if key in ["unevaluatedProperties", "unevaluatedItems"]:
+            return False
+    return True
