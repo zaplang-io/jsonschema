@@ -1,6 +1,7 @@
 # Pure-Zap JSON Schema 2020-12 assertion foundation. See README for coverage.
 import math
 import jsonschema.metaschemas
+import jsonschema.pattern
 
 struct ValidationError:
     str instance_path
@@ -156,8 +157,10 @@ def _check(JsonValue schema, str p, int64 depth, str draft):
             continue
         auto v = s[k]
         auto q = _ptr(p, k)
-        if k in ["pattern", "patternProperties", "unevaluatedProperties", "unevaluatedItems"]:
-            _bad(q, "keyword is reserved for the conformance implementation")
+        if k == "pattern":
+            if _kind(v) != "string":
+                _bad(q, "pattern must be a string")
+            auto checked = pattern.compile(_string(v))
         elif k in ["$ref", "$id", "$anchor", "$dynamicRef", "$dynamicAnchor", "$recursiveRef"]:
             if _kind(v) != "string":
                 _bad(q, "expected string")
@@ -211,11 +214,13 @@ def _check(JsonValue schema, str p, int64 depth, str draft):
                     for j in range(i):
                         if _equal(vs[i], vs[j]):
                             _bad(q, "duplicate entry")
-        elif k in ["properties", "$defs", "definitions", "dependentSchemas"]:
+        elif k in ["properties", "patternProperties", "$defs", "definitions", "dependentSchemas"]:
             if _kind(v) != "object":
                 _bad(q, "expected schema map")
             auto fields = _obj(v)
             for name in fields:
+                if k == "patternProperties":
+                    auto checked = pattern.compile(name)
                 _check(fields[name], _ptr(q, name), depth + 1, draft)
         elif k == "dependentRequired":
             if _kind(v) != "object":
@@ -258,7 +263,7 @@ def _check(JsonValue schema, str p, int64 depth, str draft):
                     _check(schemas[i], _ptr(q, str(i)), depth + 1, draft)
             else:
                 _check(v, q, depth + 1, draft)
-        elif k in ["not", "if", "then", "else", "contains", "additionalProperties", "propertyNames", "additionalItems", "contentSchema"]:
+        elif k in ["not", "if", "then", "else", "contains", "additionalProperties", "propertyNames", "additionalItems", "contentSchema", "unevaluatedItems", "unevaluatedProperties"]:
             _check(v, q, depth + 1, draft)
 
 def _err(list[ValidationError] errors, str ip, str sp, str k):
@@ -324,9 +329,9 @@ def _eval_body(
             _eval(v, state.nodes[target].schema, ip, target, errors, depth + 1, state)
             if draft == "draft-07":
                 return
-    if state.meta and "pattern" in s:
+    if "pattern" in s:
         if _kind(v) == "string":
-            if not _meta_pattern(_string(v), _string(s["pattern"])):
+            if not _search(state, _string(s["pattern"]), _string(v)):
                 _err(errors, ip, sp, "pattern")
     if "type" in s:
         auto ok = False
@@ -370,8 +375,10 @@ def _eval_body(
             if k == "oneOf" and count != 1:
                 _err(errors, ip, sp, k)
     if "not" in s:
+        auto saved_marks = state.mark_count
         if _matches(v, s["not"], ip, _ptr(sp, "not"), depth, state):
             _err(errors, ip, sp, "not")
+        state.mark_count = saved_marks
     if "if" in s:
         auto branch = "else"
         if _matches(v, s["if"], ip, _ptr(sp, "if"), depth, state):
@@ -423,8 +430,13 @@ def _eval_body(
             if prefix_key in s:
                 if _kind(s[prefix_key]) == "array":
                     prefix = _array(s[prefix_key])
+            if draft != "2020-12":
+                if rest_key == "additionalItems":
+                    if not "items" in s:
+                        rest_key = ""
             for i in range(len(items)):
                 if i < len(prefix):
+                    _mark(state, ip, str(i))
                     _eval(
                         items[i],
                         prefix[i],
@@ -435,6 +447,7 @@ def _eval_body(
                         state,
                     )
                 elif rest_key in s:
+                    _mark(state, ip, str(i))
                     _eval(
                         items[i],
                         s[rest_key],
@@ -449,6 +462,8 @@ def _eval_body(
                 for i in range(len(items)):
                     if _matches(items[i], s["contains"], _ptr(ip, str(i)), _ptr(sp, "contains"), depth, state):
                         count = count + 1
+                        if draft == "2020-12":
+                            _mark(state, ip, str(i))
                 auto minimum = 1.0
                 if draft != "draft-07" and "minContains" in s:
                     minimum = _num(s["minContains"])
@@ -468,6 +483,7 @@ def _eval_body(
                 props = _obj(s["properties"])
             for name in fields:
                 if "propertyNames" in s:
+                    auto saved_marks = state.mark_count
                     _eval(
                         JsonValue.Str(name),
                         s["propertyNames"],
@@ -477,7 +493,11 @@ def _eval_body(
                         depth + 1,
                         state,
                     )
+                    state.mark_count = saved_marks
+                auto matched = False
                 if name in props:
+                    matched = True
+                    _mark(state, ip, name)
                     _eval(
                         fields[name],
                         props[name],
@@ -487,7 +507,23 @@ def _eval_body(
                         depth + 1,
                         state,
                     )
-                elif "additionalProperties" in s:
+                if "patternProperties" in s:
+                    auto patterns = _obj(s["patternProperties"])
+                    for expression in patterns:
+                        if _search(state, expression, name):
+                            matched = True
+                            _mark(state, ip, name)
+                            _eval(
+                                fields[name],
+                                patterns[expression],
+                                _ptr(ip, name),
+                                _ptr(_ptr(sp, "patternProperties"), expression),
+                                errors,
+                                depth + 1,
+                                state,
+                            )
+                if not matched and "additionalProperties" in s:
+                    _mark(state, ip, name)
                     _eval(
                         fields[name],
                         s["additionalProperties"],
@@ -547,6 +583,35 @@ def _eval_body(
                             )
         case _:
             auto ignored = 0
+    if draft != "draft-07":
+        if _kind(v) == "object" and "unevaluatedProperties" in s:
+            auto fields = _obj(v)
+            for name in fields:
+                if not _evaluated(state, ip, name):
+                    _eval(
+                        fields[name],
+                        s["unevaluatedProperties"],
+                        _ptr(ip, name),
+                        _ptr(sp, "unevaluatedProperties"),
+                        errors,
+                        depth + 1,
+                        state,
+                    )
+                    _mark(state, ip, name)
+        if _kind(v) == "array" and "unevaluatedItems" in s:
+            auto items = _array(v)
+            for i in range(len(items)):
+                if not _evaluated(state, ip, str(i)):
+                    _eval(
+                        items[i],
+                        s["unevaluatedItems"],
+                        _ptr(ip, str(i)),
+                        _ptr(sp, "unevaluatedItems"),
+                        errors,
+                        depth + 1,
+                        state,
+                    )
+                    _mark(state, ip, str(i))
 
 def _size(
     int64 n,
@@ -579,6 +644,10 @@ struct Validator:
     bool meta
     int64 active_count
     int64 scope_count
+    list[EvaluationMark] marks
+    int64 mark_count
+    list[int64] mark_starts
+    dict[str, pattern.Regex] regexes
 
 
 def _length(str s) -> int64:
@@ -618,7 +687,7 @@ def _vocabulary(JsonValue v, str draft, str p):
             # Unevaluated and format-assertion are not implemented yet.
             auto prefix = "https://json-schema.org/draft/" + draft + "/vocab/"
             auto known = False
-            for suffix in ["core", "applicator", "validation", "meta-data", "format", "format-annotation", "content"]:
+            for suffix in ["core", "applicator", "validation", "meta-data", "format", "format-annotation", "content", "unevaluated"]:
                 if uri == prefix + suffix:
                     known = True
             if not known:
@@ -626,7 +695,7 @@ def _vocabulary(JsonValue v, str draft, str p):
 
 def _enabled(str k, str draft) -> bool:
     if draft == "draft-07":
-        if k in ["$anchor", "$dynamicAnchor", "$dynamicRef", "$recursiveRef", "$recursiveAnchor", "$vocabulary", "$defs", "prefixItems", "dependentRequired", "dependentSchemas", "minContains", "maxContains"]:
+        if k in ["$anchor", "$dynamicAnchor", "$dynamicRef", "$recursiveRef", "$recursiveAnchor", "$vocabulary", "$defs", "unevaluatedProperties", "unevaluatedItems", "prefixItems", "dependentRequired", "dependentSchemas", "minContains", "maxContains"]:
             return False
     if draft == "2019-09":
         if k in ["$dynamicAnchor", "$dynamicRef", "prefixItems"]:
@@ -870,7 +939,7 @@ def _index(
         if _enabled(k, draft):
             auto v = s[k]
             auto q = _ptr(location, k)
-            if k in ["properties", "definitions", "$defs", "dependentSchemas"]:
+            if k in ["properties", "patternProperties", "definitions", "$defs", "dependentSchemas"]:
                 auto fields = _obj(v)
                 for name in fields:
                     _index(
@@ -907,7 +976,7 @@ def _index(
                             state,
                             depth + 1,
                         )
-            elif k in ["items", "additionalItems", "additionalProperties", "propertyNames", "contains", "not", "if", "then", "else", "contentSchema"]:
+            elif k in ["items", "additionalItems", "additionalProperties", "propertyNames", "contains", "not", "if", "then", "else", "contentSchema", "unevaluatedProperties", "unevaluatedItems"]:
                 _index(v, q, base, draft, resource, state, depth + 1)
 
 def _resolve(Validator state, str base, str ref) -> str:
@@ -1013,7 +1082,15 @@ def _eval(
     else:
         state.resource_stack[state.scope_count] = state.nodes[sp].resource
     state.scope_count = state.scope_count + 1
+    auto start = state.mark_count
+    if state.active_count > len(state.mark_starts):
+        state.mark_starts.append(start)
+    else:
+        state.mark_starts[state.active_count - 1] = start
+    auto error_count = len(errors)
     _eval_body(v, schema, ip, sp, errors, depth, state)
+    if len(errors) != error_count:
+        state.mark_count = start
     state.scope_count = state.scope_count - 1
     state.active_count = state.active_count - 1
 
@@ -1026,6 +1103,10 @@ def _state() -> Validator:
         meta=False,
         active_count=0,
         scope_count=0,
+        marks=[],
+        mark_count=0,
+        mark_starts=[],
+        regexes={},
     )
 
 def _load_metas(Validator state):
@@ -1137,9 +1218,35 @@ def is_valid(JsonValue instance, JsonValue schema) -> bool:
 def validate_compiled(JsonValue instance, Validator state) -> list[ValidationError]:
     state.active_count = 0
     state.scope_count = 0
+    state.mark_count = 0
     list[ValidationError] errors = []
     _eval(instance, state.nodes[""].schema, "", "", errors, 0, state)
     return errors
 
 def is_valid_compiled(JsonValue instance, Validator state) -> bool:
     return len(validate_compiled(instance, state)) == 0
+
+
+struct EvaluationMark:
+    str instance_path
+    str token
+
+def _mark(Validator state, str ip, str token):
+    auto mark = EvaluationMark(instance_path=ip, token=token)
+    if state.mark_count == len(state.marks):
+        state.marks.append(mark)
+    else:
+        state.marks[state.mark_count] = mark
+    state.mark_count = state.mark_count + 1
+
+def _evaluated(Validator state, str ip, str token) -> bool:
+    auto start = state.mark_starts[state.active_count - 1]
+    for i in range(start, state.mark_count):
+        if state.marks[i].instance_path == ip and state.marks[i].token == token:
+            return True
+    return False
+
+def _search(Validator state, str expression, str text) -> bool:
+    if not expression in state.regexes:
+        state.regexes[expression] = pattern.compile(expression)
+    return pattern.search(state.regexes[expression], text)
