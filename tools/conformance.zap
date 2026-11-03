@@ -1,6 +1,6 @@
 import jsonschema
 
-def object(JsonValue v) -> dict[str, JsonValue]:
+def get_object(JsonValue v) -> dict[str, JsonValue]:
     match v:
         case JsonValue.Object(fields):
             return fields
@@ -8,7 +8,7 @@ def object(JsonValue v) -> dict[str, JsonValue]:
             raise "invalid corpus object"
     return {}
 
-def array(JsonValue v) -> list[JsonValue]:
+def get_array(JsonValue v) -> list[JsonValue]:
     match v:
         case JsonValue.Array(items):
             return items
@@ -24,23 +24,28 @@ def text(JsonValue v) -> str:
             return ""
 
 def main():
-    auto corpus = array(json.loads(fs.read_file(os.getenv("SCHEMA_CORPUS"))))
+    auto corpus = get_array(json.loads(fs.read_file(os.getenv("SCHEMA_CORPUS"))))
     auto draft = os.getenv("SCHEMA_DRAFT")
     auto passed = 0
     auto failed = 0
     for raw in corpus:
-        auto group = object(raw)
-        auto tests = array(group["tests"])
+        auto group = get_object(raw)
+        auto tests = get_array(group["tests"])
         auto ready = False
         auto failure = ""
         auto compiled = jsonschema.compile(JsonValue.Bool(True), {}, "", draft)
         try:
-            compiled = jsonschema.compile(group["schema"], object(group["registry"]), "", draft)
+            compiled = jsonschema.compile(
+                group["schema"],
+                get_object(group["registry"]),
+                "",
+                draft,
+            )
             ready = True
         except Exception as e:
             failure = e
         for item in tests:
-            auto test = object(item)
+            auto test = get_object(item)
             auto ok = False
             if ready:
                 try:
@@ -60,7 +65,11 @@ def main():
                 passed = passed + 1
             else:
                 failed = failed + 1
-                print("FAIL " + text(group["name"]) + " / " + text(test["description"]) + ": " + failure)
-    print(draft + ": executed=" + str(passed + failed) + " pass=" + str(passed) + " fail=" + str(failed) + " required_skip=0")
+                print(
+                    "FAIL " + text(group["name"]) + " / " + text(test["description"]) + ": " + failure,
+                )
+    print(
+        draft + ": executed=" + str(passed + failed) + " pass=" + str(passed) + " fail=" + str(failed) + " required_skip=0",
+    )
     if failed != 0:
         raise "Conformance failures"
