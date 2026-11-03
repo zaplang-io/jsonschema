@@ -78,6 +78,38 @@ def main():
         {"https://example.com/no-validation": no_validation},
     )
     assert jsonschema.is_valid_compiled(json.loads("{\"x\":1}"), custom)
+    auto long_pattern = ""
+    for i in range(4097):
+        long_pattern = long_pattern + "a"
+    auto source_limited = False
+    try:
+        jsonschema.check_schema(
+            JsonValue.Object({"pattern": JsonValue.Str(long_pattern)}),
+        )
+    except Exception as e:
+        source_limited = e.startswith("SchemaError:")
+    assert source_limited
+    auto nested = JsonValue.Bool(True)
+    for i in range(130):
+        nested = JsonValue.Object({"not": nested})
+    auto schema_limited = False
+    try:
+        jsonschema.check_schema(nested)
+    except Exception as e:
+        schema_limited = e.startswith("SchemaError")
+    assert schema_limited
+    auto expensive = ""
+    for i in range(600):
+        expensive = expensive + "a"
+    auto match_limited = False
+    try:
+        auto ignored = jsonschema.is_valid(
+            JsonValue.Str(expensive),
+            json.loads("{\"pattern\":\"(a|aa)+b\"}"),
+        )
+    except Exception as e:
+        match_limited = e.startswith("EvaluationError: regex resource limit")
+    assert match_limited
     auto schema = json.loads(
         "{\"type\":\"object\",\"properties\":{\"name\":{\"pattern\":\"^(ab|é)+$\"},\"child\":{\"$ref\":\"#\"}},\"required\":[\"name\"],\"unevaluatedProperties\":false}",
     )

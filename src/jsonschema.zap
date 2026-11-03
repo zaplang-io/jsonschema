@@ -1052,7 +1052,7 @@ def _index(
                 _bad(location, "invalid anchor " + name)
             _alias(state, base + "#" + name, location)
     for k in s:
-        if _enabled(k, draft):
+        if _enabled(k, draft) and _keyword_enabled(k, validation, applicator, unevaluated):
             auto v = s[k]
             auto q = _ptr(location, k)
             if k in ["properties", "patternProperties", "definitions", "$defs", "dependentSchemas"]:
