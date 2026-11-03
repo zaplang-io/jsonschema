@@ -108,9 +108,9 @@ def main():
     bad("{\"items\":[]}")
     bad("{\"allOf\":[]}")
     bad("{\"if\":false,\"then\":{\"type\":42}}")
-    bad("{\"$ref\":\"#\"}")
+    bad("{\"$ref\":\"#missing\"}")
     bad("{\"pattern\":\"a\"}")
-    bad("{\"$schema\":\"http://json-schema.org/draft-07/schema#\"}")
+    bad("{\"$schema\":\"https://example.com/unsupported-dialect\"}")
     auto errors = jsonschema.validate(
         json.loads("{\"a/b~c\":[\"bad\"]}"),
         json.loads("{\"properties\":{\"a/b~c\":{\"items\":{\"type\":\"integer\"}}}}"),
