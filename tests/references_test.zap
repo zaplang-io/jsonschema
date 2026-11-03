@@ -344,4 +344,43 @@ def main():
         "2020-12",
         False,
     )
-    print("references: PASS (45 instance cases)")
+    expect(
+        "1",
+        "{\"$ref\": \"#/definitions/n\", \"definitions\": {\"n\": true}, \"type\": 42}",
+        "{}",
+        "draft-07",
+        True,
+    )
+    dict[str, JsonValue] empty_registry = {}
+    auto invalid_target = False
+    try:
+        auto ignored = jsonschema.compile(
+            json.loads("{\"$ref\":\"#/definitions/n\",\"definitions\":{\"n\":null}}"),
+            empty_registry,
+            "",
+            "draft-07",
+        )
+    except:
+        invalid_target = True
+    assert invalid_target
+    auto reusable = jsonschema.compile(
+        json.loads(
+            "{\"type\": \"object\", \"properties\": {\"loop\": {\"$ref\": \"#/$defs/cycle\"}}, \"$defs\": {\"cycle\": {\"$ref\": \"#/$defs/cycle\"}}}",
+        ),
+        empty_registry,
+    )
+    auto cycled = False
+    try:
+        auto ignored = jsonschema.validate_compiled(
+            json.loads("{\"loop\":null}"),
+            reusable,
+        )
+    except:
+        cycled = True
+    assert cycled
+    assert jsonschema.is_valid_compiled(json.loads("{}"), reusable)
+    bad(
+        "{\"$schema\": \"http://json-schema.org/draft-07/schema#\", \"$ref\": \"#/definitions/n\", \"definitions\": {\"n\": {\"title\": false}}}",
+        "{}",
+    )
+    print("references: PASS (46 instance cases, cycle recovery)")

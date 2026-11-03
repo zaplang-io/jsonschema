@@ -1061,12 +1061,16 @@ def compile(
         _index(registry[uri], uri + "#", uri, _draft(dialect), uri + "#", state, 0)
     # Resolve references after every resource has been indexed, including inactive
     # branches, so broken registries cannot depend on the instance being tested.
+    list[str] referenced = []
     for location in state.nodes:
         auto node = state.nodes[location]
         auto fields = _obj(node.schema)
         for k in ["$ref", "$dynamicRef", "$recursiveRef"]:
             if _enabled(k, node.draft) and k in fields:
                 auto target = _resolve(state, node.base, _string(fields[k]))
+                _check(state.nodes[target].schema, target, 0, state.nodes[target].draft)
+                if not target in referenced:
+                    referenced.append(target)
     # The official meta-schemas run through the same evaluator in a separate
     # context, with only their three fixed anchor/$id patterns enabled.
     auto meta_state = _state()
@@ -1085,6 +1089,21 @@ def compile(
     )
     if len(failures) != 0:
         _bad(failures[0].instance_path, "official meta-schema: " + failures[0].message)
+    for target in referenced:
+        auto node = state.nodes[target]
+        list[ValidationError] target_failures = []
+        auto loc = _meta_uri(node.draft) + "#"
+        _eval(
+            node.schema,
+            meta_state.nodes[loc].schema,
+            target,
+            loc,
+            target_failures,
+            0,
+            meta_state,
+        )
+        if len(target_failures) != 0:
+            _bad(target, "reference target fails official meta-schema")
     for uri in registry:
         auto rd = _dialect(_obj(registry[uri]), _draft(dialect))
         list[ValidationError] resource_failures = []
