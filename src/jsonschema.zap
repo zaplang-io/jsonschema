@@ -77,7 +77,9 @@ def _is_type(JsonValue v, str t) -> bool:
     return _kind(v) == t
 
 # Deep equality: objects are unordered; booleans are distinct from numbers.
-def _equal(JsonValue a, JsonValue b) -> bool:
+def _equal(JsonValue a, JsonValue b, int64 depth = 0) -> bool:
+    if depth > 128:
+        raise "EvaluationError: equality nesting exceeds 128"
     match a:
         case JsonValue.Int(i):
             match b:
@@ -95,7 +97,7 @@ def _equal(JsonValue a, JsonValue b) -> bool:
         case JsonValue.Float(f):
             match b:
                 case JsonValue.Int(i):
-                    return _equal(b, a)
+                    return _equal(b, a, depth + 1)
                 case JsonValue.Float(g):
                     return f == g
                 case _:
@@ -117,7 +119,7 @@ def _equal(JsonValue a, JsonValue b) -> bool:
             if len(xs) != len(ys):
                 return False
             for i in range(len(xs)):
-                if not _equal(xs[i], ys[i]):
+                if not _equal(xs[i], ys[i], depth + 1):
                     return False
             return True
         case JsonValue.Object(xs):
@@ -129,7 +131,7 @@ def _equal(JsonValue a, JsonValue b) -> bool:
             for k in xs:
                 if not k in ys:
                     return False
-                if not _equal(xs[k], ys[k]):
+                if not _equal(xs[k], ys[k], depth + 1):
                     return False
             return True
 
@@ -408,26 +410,19 @@ def _eval_body(
         if branch in s:
             _eval(v, s[branch], ip, _ptr(sp, branch), errors, depth + 1, state)
     if _number(v):
-        auto n = _num(v)
         for k in ["minimum", "maximum", "exclusiveMinimum", "exclusiveMaximum", "multipleOf"]:
             if k in s:
-                auto b = _num(s[k])
                 auto fail = False
                 if k == "minimum":
-                    fail = n < b
+                    fail = _compare_numeric(v, s[k]) < 0
                 elif k == "maximum":
-                    fail = n > b
+                    fail = _compare_numeric(v, s[k]) > 0
                 elif k == "exclusiveMinimum":
-                    fail = n <= b
+                    fail = _compare_numeric(v, s[k]) <= 0
                 elif k == "exclusiveMaximum":
-                    fail = n >= b
+                    fail = _compare_numeric(v, s[k]) >= 0
                 else:
-                    auto quotient = n / b
-                    # Floating decimal arithmetic is approximate; documented policy.
-                    if math.fabs(quotient) > 1.7976931348623157e308:
-                        fail = True
-                    else:
-                        fail = math.fabs(quotient - math.round(quotient)) > 0.000000001
+                    fail = not _multiple(v, s[k])
                 if fail:
                     _err(errors, ip, sp, k)
     match v:
@@ -721,8 +716,11 @@ def _feature(dict[str, JsonValue] s, bool inherited, Validator state, str name) 
         auto meta = _obj(state.registry[uri])
         if "$vocabulary" in meta:
             auto vocab = _obj(meta["$vocabulary"])
+            auto base_draft = _dialect(meta, "2020-12", state)
+            if base_draft == "draft-07":
+                return True
             for key in vocab:
-                if key.endswith("/vocab/" + name):
+                if key == "https://json-schema.org/draft/" + base_draft + "/vocab/" + name:
                     return True
             return False
     return True
@@ -746,6 +744,10 @@ def _vocabulary(JsonValue v, str draft, str p):
             for suffix in ["core", "applicator", "validation", "meta-data", "format", "format-annotation", "content", "unevaluated"]:
                 if uri == prefix + suffix:
                     known = True
+                    if suffix in ["format-annotation", "unevaluated"] and draft != "2020-12":
+                        known = False
+                    if suffix == "format" and draft != "2019-09":
+                        known = False
             if not known:
                 _bad(p, "unsupported required vocabulary " + uri)
 
@@ -938,16 +940,6 @@ def _anchor(str value, str draft) -> bool:
         first = False
     return True
 
-def _meta_pattern(str value, str pattern) -> bool:
-    if pattern == "^[^#]*#?$":
-        auto at = value.find("#")
-        return at < 0 or at == _length(value) - 1
-    if pattern == "^[A-Za-z_][-A-Za-z0-9._]*$":
-        return _anchor(value, "2020-12")
-    if pattern == "^[A-Za-z][-A-Za-z0-9.:_]*$":
-        return _anchor(value, "2019-09")
-    raise "InternalError: unexpected official meta-schema pattern"
-    return False
 
 def _alias(Validator state, str uri, str location):
     if uri in state.aliases:
@@ -1301,8 +1293,8 @@ def compile(
         for added in state.nodes:
             if not added in work:
                 work.append(added)
-    # The official meta-schemas run through the same evaluator in a separate
-    # context, with only their three fixed anchor/$id patterns enabled.
+    # Official and registered meta-schemas use the same evaluator and resource
+    # index. Meta-schema recursion dispatches embedded resources by dialect.
     _load_metas(state)
     state.meta = True
     list[ValidationError] failures = []
@@ -1410,3 +1402,63 @@ def _meta_location(JsonValue schema, str inherited, Validator state) -> str:
             if name in state.aliases:
                 return state.aliases[name]
     return _meta_uri(draft) + "#"
+
+
+def _compare_numeric(JsonValue a, JsonValue b) -> int64:
+    match a:
+        case JsonValue.Int(i):
+            match b:
+                case JsonValue.Int(j):
+                    if i < j:
+                        return -1
+                    if i > j:
+                        return 1
+                    return 0
+                case JsonValue.Float(f):
+                    if f >= 9223372036854775808.0:
+                        return -1
+                    if f < -9223372036854775808.0:
+                        return 1
+                    auto j = int64(f)
+                    if i < j:
+                        return -1
+                    if i > j:
+                        return 1
+                    if float64(i) < f:
+                        return -1
+                    if float64(i) > f:
+                        return 1
+                    return 0
+                case _:
+                    return 0
+        case JsonValue.Float(f):
+            match b:
+                case JsonValue.Int(i):
+                    return -_compare_numeric(b, a)
+                case _:
+                    if f < _num(b):
+                        return -1
+                    if f > _num(b):
+                        return 1
+                    return 0
+        case _:
+            return 0
+
+def _multiple(JsonValue value, JsonValue divisor) -> bool:
+    match value:
+        case JsonValue.Int(i):
+            match divisor:
+                case JsonValue.Int(j):
+                    return i % j == 0
+                case _:
+                    auto ignored = 0
+        case _:
+            auto ignored = 0
+    auto quotient = _num(value) / _num(divisor)
+    if math.fabs(quotient) > 1.7976931348623157e308:
+        return False
+    auto nearest = math.round(quotient)
+    if nearest == 0.0:
+        return _num(value) == 0.0
+    auto tolerance = math.fabs(quotient) * 0.0000000000000004440892098500626
+    return math.fabs(quotient - nearest) <= tolerance

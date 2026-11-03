@@ -57,6 +57,11 @@ def main():
         True,
     )
     expect("{\"abc\":1}", "{\"patternProperties\":{\"^a\":true,\"c$\":false}}", False)
+    expect("0.0000000001", "{\"multipleOf\":1}", False)
+    expect("-15", "{\"multipleOf\":3}", True)
+    expect("9007199254740993", "{\"maximum\":9007199254740992}", False)
+    expect("9007199254740993", "{\"exclusiveMinimum\":9007199254740992}", True)
+    expect("9007199254740993", "{\"multipleOf\":2}", False)
     bad("{\"pattern\":\"[z-a]\"}")
     bad("{\"pattern\":\"(abc\"}")
     bad("{\"pattern\":\"a{3,2}\"}")
