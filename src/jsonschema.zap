@@ -1,6 +1,7 @@
 # Pure-Zap JSON Schema 2020-12 assertion foundation. See README for coverage.
 import math
 import jsonschema.metaschemas
+import jsonschema.pattern
 
 struct ValidationError:
     str instance_path
@@ -76,7 +77,9 @@ def _is_type(JsonValue v, str t) -> bool:
     return _kind(v) == t
 
 # Deep equality: objects are unordered; booleans are distinct from numbers.
-def _equal(JsonValue a, JsonValue b) -> bool:
+def _equal(JsonValue a, JsonValue b, int64 depth = 0) -> bool:
+    if depth > 128:
+        raise "EvaluationError: equality nesting exceeds 128"
     match a:
         case JsonValue.Int(i):
             match b:
@@ -94,7 +97,7 @@ def _equal(JsonValue a, JsonValue b) -> bool:
         case JsonValue.Float(f):
             match b:
                 case JsonValue.Int(i):
-                    return _equal(b, a)
+                    return _equal(b, a, depth + 1)
                 case JsonValue.Float(g):
                     return f == g
                 case _:
@@ -116,7 +119,7 @@ def _equal(JsonValue a, JsonValue b) -> bool:
             if len(xs) != len(ys):
                 return False
             for i in range(len(xs)):
-                if not _equal(xs[i], ys[i]):
+                if not _equal(xs[i], ys[i], depth + 1):
                     return False
             return True
         case JsonValue.Object(xs):
@@ -128,7 +131,7 @@ def _equal(JsonValue a, JsonValue b) -> bool:
             for k in xs:
                 if not k in ys:
                     return False
-                if not _equal(xs[k], ys[k]):
+                if not _equal(xs[k], ys[k], depth + 1):
                     return False
             return True
 
@@ -138,7 +141,16 @@ def _bad(str p, str msg):
 def _type_name(str t) -> bool:
     return t in ["null", "boolean", "integer", "number", "string", "array", "object"]
 
-def _check(JsonValue schema, str p, int64 depth, str draft):
+def _check(
+    JsonValue schema,
+    str p,
+    int64 depth,
+    str draft,
+    Validator state,
+    bool validation = True,
+    bool applicator = True,
+    bool unevaluated = True,
+):
     if depth > 128:
         _bad(p, "schema nesting exceeds 128")
     if _kind(schema) == "boolean":
@@ -146,18 +158,26 @@ def _check(JsonValue schema, str p, int64 depth, str draft):
     if _kind(schema) != "object":
         _bad(p, "schema must be an object or boolean")
     auto s = _obj(schema)
-    draft = _dialect(s, draft)
+    draft = _dialect(s, draft, state)
+    validation = _feature(s, validation, state, "validation")
+    applicator = _feature(s, applicator, state, "applicator")
+    auto uneval_vocabulary = "unevaluated"
+    if draft == "2019-09":
+        uneval_vocabulary = "applicator"
+    unevaluated = _feature(s, unevaluated, state, uneval_vocabulary)
     if draft == "draft-07" and "$ref" in s:
         if _kind(s["$ref"]) != "string":
             _bad(p, "$ref must be a string")
         return
     for k in s:
-        if not _enabled(k, draft):
+        if not _enabled(k, draft) or not _keyword_enabled(k, validation, applicator, unevaluated):
             continue
         auto v = s[k]
         auto q = _ptr(p, k)
-        if k in ["pattern", "patternProperties", "unevaluatedProperties", "unevaluatedItems"]:
-            _bad(q, "keyword is reserved for the conformance implementation")
+        if k == "pattern":
+            if _kind(v) != "string":
+                _bad(q, "pattern must be a string")
+            auto checked = pattern.compile(_string(v))
         elif k in ["$ref", "$id", "$anchor", "$dynamicRef", "$dynamicAnchor", "$recursiveRef"]:
             if _kind(v) != "string":
                 _bad(q, "expected string")
@@ -168,7 +188,7 @@ def _check(JsonValue schema, str p, int64 depth, str draft):
         elif k == "$vocabulary":
             _vocabulary(v, draft, q)
         elif k == "$schema":
-            auto selected = _draft(_string(v))
+            auto selected = _dialect(s, draft, state)
         elif k == "type":
             if _kind(v) == "string":
                 if not _type_name(_string(v)):
@@ -211,12 +231,23 @@ def _check(JsonValue schema, str p, int64 depth, str draft):
                     for j in range(i):
                         if _equal(vs[i], vs[j]):
                             _bad(q, "duplicate entry")
-        elif k in ["properties", "$defs", "definitions", "dependentSchemas"]:
+        elif k in ["properties", "patternProperties", "$defs", "definitions", "dependentSchemas"]:
             if _kind(v) != "object":
                 _bad(q, "expected schema map")
             auto fields = _obj(v)
             for name in fields:
-                _check(fields[name], _ptr(q, name), depth + 1, draft)
+                if k == "patternProperties":
+                    auto checked = pattern.compile(name)
+                _check(
+                    fields[name],
+                    _ptr(q, name),
+                    depth + 1,
+                    draft,
+                    state,
+                    validation,
+                    applicator,
+                    unevaluated,
+                )
         elif k == "dependentRequired":
             if _kind(v) != "object":
                 _bad(q, "expected object")
@@ -224,7 +255,16 @@ def _check(JsonValue schema, str p, int64 depth, str draft):
             for name in deps:
                 # Reuse required-array validation, including uniqueness.
                 auto required = {"required": deps[name]}
-                _check(JsonValue.Object(required), _ptr(q, name), depth + 1, draft)
+                _check(
+                    JsonValue.Object(required),
+                    _ptr(q, name),
+                    depth + 1,
+                    draft,
+                    state,
+                    validation,
+                    applicator,
+                    unevaluated,
+                )
         elif k in ["allOf", "anyOf", "oneOf", "prefixItems"]:
             if _kind(v) != "array":
                 _bad(q, "expected schema array")
@@ -232,7 +272,16 @@ def _check(JsonValue schema, str p, int64 depth, str draft):
             if len(schemas) == 0:
                 _bad(q, "schema array must not be empty")
             for i in range(len(schemas)):
-                _check(schemas[i], _ptr(q, str(i)), depth + 1, draft)
+                _check(
+                    schemas[i],
+                    _ptr(q, str(i)),
+                    depth + 1,
+                    draft,
+                    state,
+                    validation,
+                    applicator,
+                    unevaluated,
+                )
         elif k == "dependencies":
             if draft != "2020-12":
                 if _kind(v) != "object":
@@ -246,20 +295,51 @@ def _check(JsonValue schema, str p, int64 depth, str draft):
                             _ptr(q, name),
                             depth + 1,
                             draft,
+                            state,
+                            validation,
+                            applicator,
+                            unevaluated,
                         )
                     else:
-                        _check(deps[name], _ptr(q, name), depth + 1, draft)
+                        _check(
+                            deps[name],
+                            _ptr(q, name),
+                            depth + 1,
+                            draft,
+                            state,
+                            validation,
+                            applicator,
+                            unevaluated,
+                        )
         elif k == "items":
             if draft != "2020-12" and _kind(v) == "array":
                 auto schemas = _array(v)
                 if len(schemas) == 0:
                     _bad(q, "tuple schema must not be empty")
                 for i in range(len(schemas)):
-                    _check(schemas[i], _ptr(q, str(i)), depth + 1, draft)
+                    _check(
+                        schemas[i],
+                        _ptr(q, str(i)),
+                        depth + 1,
+                        draft,
+                        state,
+                        validation,
+                        applicator,
+                        unevaluated,
+                    )
             else:
-                _check(v, q, depth + 1, draft)
-        elif k in ["not", "if", "then", "else", "contains", "additionalProperties", "propertyNames", "additionalItems", "contentSchema"]:
-            _check(v, q, depth + 1, draft)
+                _check(
+                    v,
+                    q,
+                    depth + 1,
+                    draft,
+                    state,
+                    validation,
+                    applicator,
+                    unevaluated,
+                )
+        elif k in ["not", "if", "then", "else", "contains", "additionalProperties", "propertyNames", "additionalItems", "contentSchema", "unevaluatedItems", "unevaluatedProperties"]:
+            _check(v, q, depth + 1, draft, state, validation, applicator, unevaluated)
 
 def _err(list[ValidationError] errors, str ip, str sp, str k):
     errors.append(
@@ -311,6 +391,11 @@ def _eval_body(
     auto node = state.nodes[sp]
     auto draft = node.draft
     auto s = _obj(schema)
+    dict[str, JsonValue] active_keywords = {}
+    for key in s:
+        if _keyword_enabled(key, node.validation, node.applicator, node.unevaluated):
+            active_keywords[key] = s[key]
+    s = active_keywords
     for refkey in ["$ref", "$dynamicRef", "$recursiveRef"]:
         auto enabled = refkey == "$ref"
         if refkey == "$dynamicRef" and draft == "2020-12":
@@ -324,9 +409,9 @@ def _eval_body(
             _eval(v, state.nodes[target].schema, ip, target, errors, depth + 1, state)
             if draft == "draft-07":
                 return
-    if state.meta and "pattern" in s:
+    if "pattern" in s:
         if _kind(v) == "string":
-            if not _meta_pattern(_string(v), _string(s["pattern"])):
+            if not _search(state, _string(s["pattern"]), _string(v)):
                 _err(errors, ip, sp, "pattern")
     if "type" in s:
         auto ok = False
@@ -370,8 +455,10 @@ def _eval_body(
             if k == "oneOf" and count != 1:
                 _err(errors, ip, sp, k)
     if "not" in s:
+        auto saved_marks = state.mark_count
         if _matches(v, s["not"], ip, _ptr(sp, "not"), depth, state):
             _err(errors, ip, sp, "not")
+        state.mark_count = saved_marks
     if "if" in s:
         auto branch = "else"
         if _matches(v, s["if"], ip, _ptr(sp, "if"), depth, state):
@@ -379,23 +466,19 @@ def _eval_body(
         if branch in s:
             _eval(v, s[branch], ip, _ptr(sp, branch), errors, depth + 1, state)
     if _number(v):
-        auto n = _num(v)
         for k in ["minimum", "maximum", "exclusiveMinimum", "exclusiveMaximum", "multipleOf"]:
             if k in s:
-                auto b = _num(s[k])
                 auto fail = False
                 if k == "minimum":
-                    fail = n < b
+                    fail = _compare_numeric(v, s[k]) < 0
                 elif k == "maximum":
-                    fail = n > b
+                    fail = _compare_numeric(v, s[k]) > 0
                 elif k == "exclusiveMinimum":
-                    fail = n <= b
+                    fail = _compare_numeric(v, s[k]) <= 0
                 elif k == "exclusiveMaximum":
-                    fail = n >= b
+                    fail = _compare_numeric(v, s[k]) >= 0
                 else:
-                    auto quotient = n / b
-                    # Floating decimal arithmetic is approximate; documented policy.
-                    fail = math.fabs(quotient - math.round(quotient)) > 0.000000001
+                    fail = not _multiple(v, s[k])
                 if fail:
                     _err(errors, ip, sp, k)
     match v:
@@ -423,8 +506,13 @@ def _eval_body(
             if prefix_key in s:
                 if _kind(s[prefix_key]) == "array":
                     prefix = _array(s[prefix_key])
+            if draft != "2020-12":
+                if rest_key == "additionalItems":
+                    if not "items" in s:
+                        rest_key = ""
             for i in range(len(items)):
                 if i < len(prefix):
+                    _mark(state, ip, str(i))
                     _eval(
                         items[i],
                         prefix[i],
@@ -435,6 +523,7 @@ def _eval_body(
                         state,
                     )
                 elif rest_key in s:
+                    _mark(state, ip, str(i))
                     _eval(
                         items[i],
                         s[rest_key],
@@ -449,6 +538,8 @@ def _eval_body(
                 for i in range(len(items)):
                     if _matches(items[i], s["contains"], _ptr(ip, str(i)), _ptr(sp, "contains"), depth, state):
                         count = count + 1
+                        if draft == "2020-12":
+                            _mark(state, ip, str(i))
                 auto minimum = 1.0
                 if draft != "draft-07" and "minContains" in s:
                     minimum = _num(s["minContains"])
@@ -468,6 +559,7 @@ def _eval_body(
                 props = _obj(s["properties"])
             for name in fields:
                 if "propertyNames" in s:
+                    auto saved_marks = state.mark_count
                     _eval(
                         JsonValue.Str(name),
                         s["propertyNames"],
@@ -477,7 +569,11 @@ def _eval_body(
                         depth + 1,
                         state,
                     )
+                    state.mark_count = saved_marks
+                auto matched = False
                 if name in props:
+                    matched = True
+                    _mark(state, ip, name)
                     _eval(
                         fields[name],
                         props[name],
@@ -487,7 +583,23 @@ def _eval_body(
                         depth + 1,
                         state,
                     )
-                elif "additionalProperties" in s:
+                if "patternProperties" in s:
+                    auto patterns = _obj(s["patternProperties"])
+                    for expression in patterns:
+                        if _search(state, expression, name):
+                            matched = True
+                            _mark(state, ip, name)
+                            _eval(
+                                fields[name],
+                                patterns[expression],
+                                _ptr(ip, name),
+                                _ptr(_ptr(sp, "patternProperties"), expression),
+                                errors,
+                                depth + 1,
+                                state,
+                            )
+                if not matched and "additionalProperties" in s:
+                    _mark(state, ip, name)
                     _eval(
                         fields[name],
                         s["additionalProperties"],
@@ -547,6 +659,35 @@ def _eval_body(
                             )
         case _:
             auto ignored = 0
+    if draft != "draft-07":
+        if _kind(v) == "object" and "unevaluatedProperties" in s:
+            auto fields = _obj(v)
+            for name in fields:
+                if not _evaluated(state, ip, name):
+                    _eval(
+                        fields[name],
+                        s["unevaluatedProperties"],
+                        _ptr(ip, name),
+                        _ptr(sp, "unevaluatedProperties"),
+                        errors,
+                        depth + 1,
+                        state,
+                    )
+                    _mark(state, ip, name)
+        if _kind(v) == "array" and "unevaluatedItems" in s:
+            auto items = _array(v)
+            for i in range(len(items)):
+                if not _evaluated(state, ip, str(i)):
+                    _eval(
+                        items[i],
+                        s["unevaluatedItems"],
+                        _ptr(ip, str(i)),
+                        _ptr(sp, "unevaluatedItems"),
+                        errors,
+                        depth + 1,
+                        state,
+                    )
+                    _mark(state, ip, str(i))
 
 def _size(
     int64 n,
@@ -570,6 +711,9 @@ struct SchemaNode:
     str base
     str draft
     str resource
+    bool validation
+    bool applicator
+    bool unevaluated
 
 struct Validator:
     dict[str, SchemaNode] nodes
@@ -579,6 +723,11 @@ struct Validator:
     bool meta
     int64 active_count
     int64 scope_count
+    list[EvaluationMark] marks
+    int64 mark_count
+    list[int64] mark_starts
+    dict[str, pattern.Regex] regexes
+    dict[str, JsonValue] registry
 
 
 def _length(str s) -> int64:
@@ -597,10 +746,40 @@ def _draft(str name) -> str:
     _bad("$schema", "unsupported dialect " + name)
     return ""
 
-def _dialect(dict[str, JsonValue] s, str inherited) -> str:
-    if "$schema" in s:
-        return _draft(_string(s["$schema"]))
-    return inherited
+def _dialect(dict[str, JsonValue] s, str inherited, Validator state) -> str:
+    if not "$schema" in s:
+        return inherited
+    auto name = _string(s["$schema"])
+    auto count = 0
+    while name in state.registry:
+        count = count + 1
+        if count > 16:
+            _bad(name, "cyclic meta-schema dialect declarations")
+        auto meta = _obj(state.registry[name])
+        if not "$schema" in meta:
+            _bad(name, "custom meta-schema must declare a supported base dialect")
+        auto next = _string(meta["$schema"])
+        if next == name:
+            return _draft(name)
+        name = next
+    return _draft(name)
+
+def _feature(dict[str, JsonValue] s, bool inherited, Validator state, str name) -> bool:
+    if not "$schema" in s:
+        return inherited
+    auto uri = _string(s["$schema"])
+    if uri in state.registry:
+        auto meta = _obj(state.registry[uri])
+        if "$vocabulary" in meta:
+            auto vocab = _obj(meta["$vocabulary"])
+            auto base_draft = _dialect(meta, "2020-12", state)
+            if base_draft == "draft-07":
+                return True
+            for key in vocab:
+                if key == "https://json-schema.org/draft/" + base_draft + "/vocab/" + name:
+                    return True
+            return False
+    return True
 
 def _meta_uri(str draft) -> str:
     if draft == "draft-07":
@@ -618,15 +797,19 @@ def _vocabulary(JsonValue v, str draft, str p):
             # Unevaluated and format-assertion are not implemented yet.
             auto prefix = "https://json-schema.org/draft/" + draft + "/vocab/"
             auto known = False
-            for suffix in ["core", "applicator", "validation", "meta-data", "format", "format-annotation", "content"]:
+            for suffix in ["core", "applicator", "validation", "meta-data", "format", "format-annotation", "content", "unevaluated"]:
                 if uri == prefix + suffix:
                     known = True
+                    if suffix in ["format-annotation", "unevaluated"] and draft != "2020-12":
+                        known = False
+                    if suffix == "format" and draft != "2019-09":
+                        known = False
             if not known:
                 _bad(p, "unsupported required vocabulary " + uri)
 
 def _enabled(str k, str draft) -> bool:
     if draft == "draft-07":
-        if k in ["$anchor", "$dynamicAnchor", "$dynamicRef", "$recursiveRef", "$recursiveAnchor", "$vocabulary", "$defs", "prefixItems", "dependentRequired", "dependentSchemas", "minContains", "maxContains"]:
+        if k in ["$anchor", "$dynamicAnchor", "$dynamicRef", "$recursiveRef", "$recursiveAnchor", "$vocabulary", "$defs", "unevaluatedProperties", "unevaluatedItems", "prefixItems", "dependentRequired", "dependentSchemas", "minContains", "maxContains"]:
             return False
     if draft == "2019-09":
         if k in ["$dynamicAnchor", "$dynamicRef", "prefixItems"]:
@@ -813,16 +996,6 @@ def _anchor(str value, str draft) -> bool:
         first = False
     return True
 
-def _meta_pattern(str value, str pattern) -> bool:
-    if pattern == "^[^#]*#?$":
-        auto at = value.find("#")
-        return at < 0 or at == _length(value) - 1
-    if pattern == "^[A-Za-z_][-A-Za-z0-9._]*$":
-        return _anchor(value, "2020-12")
-    if pattern == "^[A-Za-z][-A-Za-z0-9.:_]*$":
-        return _anchor(value, "2019-09")
-    raise "InternalError: unexpected official meta-schema pattern"
-    return False
 
 def _alias(Validator state, str uri, str location):
     if uri in state.aliases:
@@ -838,12 +1011,21 @@ def _index(
     str resource,
     Validator state,
     int64 depth,
+    bool validation = True,
+    bool applicator = True,
+    bool unevaluated = True,
 ):
     if depth > 128:
         _bad(location, "schema nesting exceeds 128")
     auto s = _obj(schema)
-    draft = _dialect(s, draft)
-    if "$id" in s:
+    draft = _dialect(s, draft, state)
+    validation = _feature(s, validation, state, "validation")
+    applicator = _feature(s, applicator, state, "applicator")
+    auto uneval_vocabulary = "unevaluated"
+    if draft == "2019-09":
+        uneval_vocabulary = "applicator"
+    unevaluated = _feature(s, unevaluated, state, uneval_vocabulary)
+    if "$id" in s and not (draft == "draft-07" and "$ref" in s):
         auto id = _join_uri(base, _string(s["$id"]))
         auto fragment = _uri(id).fragment
         if fragment != "":
@@ -859,6 +1041,9 @@ def _index(
         base=base,
         draft=draft,
         resource=resource,
+        validation=validation,
+        applicator=applicator,
+        unevaluated=unevaluated,
     )
     for k in ["$anchor", "$dynamicAnchor"]:
         if _enabled(k, draft) and k in s:
@@ -867,10 +1052,10 @@ def _index(
                 _bad(location, "invalid anchor " + name)
             _alias(state, base + "#" + name, location)
     for k in s:
-        if _enabled(k, draft):
+        if _enabled(k, draft) and _keyword_enabled(k, validation, applicator, unevaluated):
             auto v = s[k]
             auto q = _ptr(location, k)
-            if k in ["properties", "definitions", "$defs", "dependentSchemas"]:
+            if k in ["properties", "patternProperties", "definitions", "$defs", "dependentSchemas"]:
                 auto fields = _obj(v)
                 for name in fields:
                     _index(
@@ -881,6 +1066,9 @@ def _index(
                         resource,
                         state,
                         depth + 1,
+                        validation,
+                        applicator,
+                        unevaluated,
                     )
             elif k in ["allOf", "anyOf", "oneOf", "prefixItems"] or k == "items" and _kind(v) == "array":
                 auto schemas = _array(v)
@@ -893,6 +1081,9 @@ def _index(
                         resource,
                         state,
                         depth + 1,
+                        validation,
+                        applicator,
+                        unevaluated,
                     )
             elif k == "dependencies":
                 auto deps = _obj(v)
@@ -906,9 +1097,23 @@ def _index(
                             resource,
                             state,
                             depth + 1,
+                            validation,
+                            applicator,
+                            unevaluated,
                         )
-            elif k in ["items", "additionalItems", "additionalProperties", "propertyNames", "contains", "not", "if", "then", "else", "contentSchema"]:
-                _index(v, q, base, draft, resource, state, depth + 1)
+            elif k in ["items", "additionalItems", "additionalProperties", "propertyNames", "contains", "not", "if", "then", "else", "contentSchema", "unevaluatedProperties", "unevaluatedItems"]:
+                _index(
+                    v,
+                    q,
+                    base,
+                    draft,
+                    resource,
+                    state,
+                    depth + 1,
+                    validation,
+                    applicator,
+                    unevaluated,
+                )
 
 def _resolve(Validator state, str base, str ref) -> str:
     auto uri = _join_uri(base, ref)
@@ -922,6 +1127,8 @@ def _resolve(Validator state, str base, str ref) -> str:
     if not document in state.aliases:
         _bad(uri, "resource is not present in the offline registry")
     auto location = state.aliases[document]
+    auto raw = state.nodes[location].schema
+    auto context = state.nodes[location]
     if fragment != "":
         # Decode and re-encode each pointer token, rejecting malformed ~ escapes.
         for token in fragment[1:].split("/"):
@@ -942,9 +1149,56 @@ def _resolve(Validator state, str base, str ref) -> str:
                 else:
                     decoded = decoded + str(token[i])
                     i = i + 1
+            if _kind(raw) == "object":
+                auto fields = _obj(raw)
+                if not decoded in fields:
+                    _bad(uri, "JSON Pointer key not found")
+                raw = fields[decoded]
+            elif _kind(raw) == "array":
+                if decoded == "":
+                    _bad(uri, "empty array index")
+                auto index = 0
+                for c in decoded:
+                    auto digit = ord(c) - 48
+                    if digit < 0 or digit > 9:
+                        _bad(uri, "invalid array index")
+                    index = index * 10 + digit
+                    if index > 10000000:
+                        _bad(uri, "array index out of bounds")
+                if str(index) != decoded:
+                    _bad(uri, "noncanonical array index")
+                auto items = _array(raw)
+                if index >= len(items):
+                    _bad(uri, "array index out of bounds")
+                raw = items[index]
+            else:
+                _bad(uri, "JSON Pointer traverses a scalar")
             location = _ptr(location, decoded)
+            if location in state.nodes:
+                context = state.nodes[location]
     if not location in state.nodes:
-        _bad(uri, "reference does not identify an indexed subschema")
+        _check(
+            raw,
+            location,
+            0,
+            context.draft,
+            state,
+            context.validation,
+            context.applicator,
+            context.unevaluated,
+        )
+        _index(
+            raw,
+            location,
+            context.base,
+            context.draft,
+            context.resource,
+            state,
+            0,
+            context.validation,
+            context.applicator,
+            context.unevaluated,
+        )
     return location
 
 def _dynamic(Validator state, str target, str key, str ref) -> str:
@@ -969,14 +1223,16 @@ def _dynamic(Validator state, str target, str key, str ref) -> str:
     else:
         if "$recursiveAnchor" in s:
             if _equal(s["$recursiveAnchor"], JsonValue.Bool(True)):
-                for resource_index in range(state.scope_count):
-                    auto resource = state.resource_stack[resource_index]
+                auto i = state.scope_count - 1
+                while i >= 0:
+                    auto resource = state.resource_stack[i]
                     auto fields = _obj(state.nodes[resource].schema)
-                    if "$recursiveAnchor" in fields:
-                        if _equal(fields["$recursiveAnchor"], JsonValue.Bool(True)):
-                            return resource
-                    else:
+                    if not "$recursiveAnchor" in fields:
                         break
+                    if not _equal(fields["$recursiveAnchor"], JsonValue.Bool(True)):
+                        break
+                    target = resource
+                    i = i - 1
     return target
 
 def _eval(
@@ -995,9 +1251,9 @@ def _eval(
     if state.meta:
         auto source_draft = state.nodes[sp].draft
         if sp == _meta_uri(source_draft) + "#":
-            auto declared = _dialect(_obj(v), source_draft)
-            if declared != source_draft:
-                sp = _meta_uri(declared) + "#"
+            auto selected = _meta_location(v, source_draft, state)
+            if selected != sp:
+                sp = selected
                 schema = state.nodes[sp].schema
     auto frame = json.dumps(JsonValue.Array([JsonValue.Str(sp), JsonValue.Str(ip)]))
     for i in range(state.active_count):
@@ -1013,7 +1269,15 @@ def _eval(
     else:
         state.resource_stack[state.scope_count] = state.nodes[sp].resource
     state.scope_count = state.scope_count + 1
+    auto start = state.mark_count
+    if state.active_count > len(state.mark_starts):
+        state.mark_starts.append(start)
+    else:
+        state.mark_starts[state.active_count - 1] = start
+    auto error_count = len(errors)
     _eval_body(v, schema, ip, sp, errors, depth, state)
+    if len(errors) != error_count:
+        state.mark_count = start
     state.scope_count = state.scope_count - 1
     state.active_count = state.active_count - 1
 
@@ -1026,11 +1290,18 @@ def _state() -> Validator:
         meta=False,
         active_count=0,
         scope_count=0,
+        marks=[],
+        mark_count=0,
+        mark_starts=[],
+        regexes={},
+        registry={},
     )
 
 def _load_metas(Validator state):
     auto schemas = metaschemas.resources()
     for uri in schemas:
+        if uri in state.aliases:
+            continue
         _alias(state, uri, uri + "#")
         _index(
             schemas[uri],
@@ -1049,76 +1320,95 @@ def compile(
     str dialect = "2020-12",
 ) -> Validator:
     auto state = _state()
-    auto draft = _dialect(_obj(schema), _draft(dialect))
-    _check(schema, "", 0, draft)
+    state.registry = registry
+    auto draft = _dialect(_obj(schema), _draft(dialect), state)
+    _check(schema, "", 0, draft, state)
     _alias(state, _document(base_uri), "")
     _index(schema, "", _document(base_uri), draft, "", state, 0)
     for uri in registry:
         if _uri(uri).fragment != "":
             _bad(uri, "registry keys must not contain fragments")
-        _check(registry[uri], uri, 0, _draft(dialect))
+        _check(registry[uri], uri, 0, _draft(dialect), state)
         _alias(state, _document(uri), uri + "#")
         _index(registry[uri], uri + "#", uri, _draft(dialect), uri + "#", state, 0)
     # Resolve references after every resource has been indexed, including inactive
     # branches, so broken registries cannot depend on the instance being tested.
     list[str] referenced = []
+    list[str] work = []
     for location in state.nodes:
+        work.append(location)
+    auto cursor = 0
+    while cursor < len(work):
+        auto location = work[cursor]
+        cursor = cursor + 1
         auto node = state.nodes[location]
         auto fields = _obj(node.schema)
         for k in ["$ref", "$dynamicRef", "$recursiveRef"]:
             if _enabled(k, node.draft) and k in fields:
                 auto target = _resolve(state, node.base, _string(fields[k]))
-                _check(state.nodes[target].schema, target, 0, state.nodes[target].draft)
+                _check(
+                    state.nodes[target].schema,
+                    target,
+                    0,
+                    state.nodes[target].draft,
+                    state,
+                    state.nodes[target].validation,
+                    state.nodes[target].applicator,
+                    state.nodes[target].unevaluated,
+                )
                 if not target in referenced:
                     referenced.append(target)
-    # The official meta-schemas run through the same evaluator in a separate
-    # context, with only their three fixed anchor/$id patterns enabled.
-    auto meta_state = _state()
-    _load_metas(meta_state)
-    meta_state.meta = True
+        for added in state.nodes:
+            if not added in work:
+                work.append(added)
+    # Official and registered meta-schemas use the same evaluator and resource
+    # index. Meta-schema recursion dispatches embedded resources by dialect.
+    _load_metas(state)
+    state.meta = True
     list[ValidationError] failures = []
-    auto meta_location = _meta_uri(draft) + "#"
+    auto meta_location = _meta_location(schema, draft, state)
     _eval(
         schema,
-        meta_state.nodes[meta_location].schema,
+        state.nodes[meta_location].schema,
         "",
         meta_location,
         failures,
         0,
-        meta_state,
+        state,
     )
     if len(failures) != 0:
         _bad(failures[0].instance_path, "official meta-schema: " + failures[0].message)
     for target in referenced:
         auto node = state.nodes[target]
         list[ValidationError] target_failures = []
-        auto loc = _meta_uri(node.draft) + "#"
+        auto loc = _meta_location(node.schema, node.draft, state)
         _eval(
             node.schema,
-            meta_state.nodes[loc].schema,
+            state.nodes[loc].schema,
             target,
             loc,
             target_failures,
             0,
-            meta_state,
+            state,
         )
         if len(target_failures) != 0:
             _bad(target, "reference target fails official meta-schema")
     for uri in registry:
-        auto rd = _dialect(_obj(registry[uri]), _draft(dialect))
+        auto rd = _dialect(_obj(registry[uri]), _draft(dialect), state)
         list[ValidationError] resource_failures = []
-        auto loc = _meta_uri(rd) + "#"
+        auto loc = _meta_location(registry[uri], rd, state)
         _eval(
             registry[uri],
-            meta_state.nodes[loc].schema,
+            state.nodes[loc].schema,
             uri,
             loc,
             resource_failures,
             0,
-            meta_state,
+            state,
         )
         if len(resource_failures) != 0:
             _bad(uri, "resource fails official meta-schema")
+    state.meta = False
     return state
 
 def check_schema(JsonValue schema, str dialect = "2020-12"):
@@ -1137,9 +1427,124 @@ def is_valid(JsonValue instance, JsonValue schema) -> bool:
 def validate_compiled(JsonValue instance, Validator state) -> list[ValidationError]:
     state.active_count = 0
     state.scope_count = 0
+    state.mark_count = 0
     list[ValidationError] errors = []
     _eval(instance, state.nodes[""].schema, "", "", errors, 0, state)
     return errors
 
 def is_valid_compiled(JsonValue instance, Validator state) -> bool:
     return len(validate_compiled(instance, state)) == 0
+
+
+struct EvaluationMark:
+    str instance_path
+    str token
+
+def _mark(Validator state, str ip, str token):
+    auto mark = EvaluationMark(instance_path=ip, token=token)
+    if state.mark_count == len(state.marks):
+        state.marks.append(mark)
+    else:
+        state.marks[state.mark_count] = mark
+    state.mark_count = state.mark_count + 1
+
+def _evaluated(Validator state, str ip, str token) -> bool:
+    auto start = state.mark_starts[state.active_count - 1]
+    for i in range(start, state.mark_count):
+        if state.marks[i].instance_path == ip and state.marks[i].token == token:
+            return True
+    return False
+
+def _search(Validator state, str expression, str text) -> bool:
+    if not expression in state.regexes:
+        state.regexes[expression] = pattern.compile(expression)
+    return pattern.search(state.regexes[expression], text)
+
+
+def _meta_location(JsonValue schema, str inherited, Validator state) -> str:
+    auto fields = _obj(schema)
+    auto draft = _dialect(fields, inherited, state)
+    if "$schema" in fields:
+        auto name = _string(fields["$schema"])
+        if name in state.registry:
+            if name in state.aliases:
+                return state.aliases[name]
+    return _meta_uri(draft) + "#"
+
+
+def _compare_numeric(JsonValue a, JsonValue b) -> int64:
+    match a:
+        case JsonValue.Int(i):
+            match b:
+                case JsonValue.Int(j):
+                    if i < j:
+                        return -1
+                    if i > j:
+                        return 1
+                    return 0
+                case JsonValue.Float(f):
+                    if f >= 9223372036854775808.0:
+                        return -1
+                    if f < -9223372036854775808.0:
+                        return 1
+                    auto j = int64(f)
+                    if i < j:
+                        return -1
+                    if i > j:
+                        return 1
+                    if float64(i) < f:
+                        return -1
+                    if float64(i) > f:
+                        return 1
+                    return 0
+                case _:
+                    return 0
+        case JsonValue.Float(f):
+            match b:
+                case JsonValue.Int(i):
+                    return -_compare_numeric(b, a)
+                case _:
+                    if f < _num(b):
+                        return -1
+                    if f > _num(b):
+                        return 1
+                    return 0
+        case _:
+            return 0
+
+def _multiple(JsonValue value, JsonValue divisor) -> bool:
+    match value:
+        case JsonValue.Int(i):
+            match divisor:
+                case JsonValue.Int(j):
+                    return i % j == 0
+                case _:
+                    auto ignored = 0
+        case _:
+            auto ignored = 0
+    auto quotient = _num(value) / _num(divisor)
+    if math.fabs(quotient) > 1.7976931348623157e308:
+        return False
+    auto nearest = math.round(quotient)
+    if nearest == 0.0:
+        return _num(value) == 0.0
+    auto tolerance = math.fabs(quotient) * 0.0000000000000004440892098500626
+    return math.fabs(quotient - nearest) <= tolerance
+
+
+def _keyword_enabled(
+    str key,
+    bool validation,
+    bool applicator,
+    bool unevaluated,
+) -> bool:
+    if not validation:
+        if key in ["type", "enum", "const", "minimum", "maximum", "exclusiveMinimum", "exclusiveMaximum", "multipleOf", "minLength", "maxLength", "pattern", "minItems", "maxItems", "uniqueItems", "minContains", "maxContains", "minProperties", "maxProperties", "required", "dependentRequired"]:
+            return False
+    if not applicator:
+        if key in ["allOf", "anyOf", "oneOf", "not", "if", "then", "else", "properties", "patternProperties", "additionalProperties", "propertyNames", "dependentSchemas", "items", "prefixItems", "additionalItems", "contains", "dependencies"]:
+            return False
+    if not unevaluated:
+        if key in ["unevaluatedProperties", "unevaluatedItems"]:
+            return False
+    return True

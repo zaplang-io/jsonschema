@@ -109,7 +109,7 @@ def main():
     bad("{\"allOf\":[]}")
     bad("{\"if\":false,\"then\":{\"type\":42}}")
     bad("{\"$ref\":\"#missing\"}")
-    bad("{\"pattern\":\"a\"}")
+    bad("{\"pattern\":\"[\"}")
     bad("{\"$schema\":\"https://example.com/unsupported-dialect\"}")
     auto errors = jsonschema.validate(
         json.loads("{\"a/b~c\":[\"bad\"]}"),

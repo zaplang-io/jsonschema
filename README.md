@@ -2,8 +2,9 @@
 
 Pure-Zap JSON Schema validation over the standard library `JsonValue` DOM.
 Implements [zaplang-io/zap#316](https://github.com/zaplang-io/zap/issues/316).
-Supports draft-aware assertion subsets for **2020-12, 2019-09, and draft-07**.
-Full draft conformance remains gated on issue #3 (regex and unevaluated tracking).
+Supports **2020-12, 2019-09, and draft-07**. All 3,480 required cases in the
+pinned official suite pass, plus 115 selected optional cases. See [SUPPORT.md](SUPPORT.md)
+for tested coverage, optional skips, regex syntax, numeric limits, and resource bounds.
 
 ```zap
 import jsonschema
@@ -62,43 +63,44 @@ Supported assertions:
 
 - Boolean schemas; `type` including unions, `enum`, `const`.
 - `minimum`, `maximum`, exclusive bounds, `multipleOf`.
-- `minLength`/`maxLength` count Unicode codepoints, not bytes or graphemes.
-- `properties`, `required`, `additionalProperties`, `propertyNames`,
+- `pattern`; `minLength`/`maxLength` count Unicode codepoints, not bytes or graphemes.
+- `properties`, `patternProperties`, `required`, `additionalProperties`, `propertyNames`,
   `dependentRequired`, `dependentSchemas`, property count bounds.
 - `prefixItems`, `items`, `contains`, `minContains`/`maxContains`,
   `uniqueItems`, item count bounds.
 - `allOf`, `anyOf`, `oneOf`, `not`, `if`/`then`/`else`.
+- `unevaluatedProperties`/`unevaluatedItems` with annotations from successful
+  references, alternatives, conditionals, and applicable child rules.
 - `$ref`, `$id`, `$anchor`, `$dynamicAnchor`/`$dynamicRef` (2020-12),
   `$recursiveAnchor`/`$recursiveRef` (2019-09); `$defs`/`definitions` indexing.
 - Draft-07 and 2019-09 tuple `items`, `additionalItems`, and `dependencies`.
   Draft-07 ignores `$ref` siblings; modern drafts evaluate them. Keywords
   introduced in later drafts are ignored when an earlier draft is selected.
 
-Regex (`pattern`/`patternProperties`) and unevaluated assertions currently raise
-`SchemaError`. Unknown extension keywords are ignored. `format`, content keywords,
-and annotations such as `default` are not assertions. The three fixed regexes
-used by the official meta-schemas for `$id` and anchor syntax are checked by
-private dedicated matchers; this does not enable general regex assertions.
-Unsupported required vocabularies (including format-assertion and unevaluated)
-raise errors. Full custom dialect/meta-schema registration is not supported.
-Schema and evaluation nesting are each limited to 128 levels. Error schema paths
-for external resources include the retrieval URI plus fragment, while paths for
-the primary document remain JSON Pointers. References currently target indexed
-subschemas in known schema locations (applicators, definitions, and `$defs`).
+Unknown extension keywords are ignored. JSON Pointer references can identify
+schemas inside arbitrary keyword containers; the target is checked and indexed
+on demand. Custom meta-schemas can be registered by URI in the offline registry
+when they declare a supported base draft and supported vocabularies. Vocabulary
+omission controls which assertions/applicators are active; unknown optional
+vocabularies are ignored, while unsupported required vocabularies raise errors.
+`format` is annotation-only. Content keywords never decode or execute content.
+Format assertions and custom vocabulary implementations are not provided.
 
-Numbers follow Zap's JSON DOM: i64 integers and binary64 floats, with larger
-JSON integer literals parsed as binary64. Deep equality preserves exact i64
-comparisons and distinguishes booleans from numbers. Arithmetic bounds and
-multipleOf currently use binary64; bounds above 2^53 can lose precision.
-`multipleOf` accepts a quotient within 1e-9 of an integer. This policy is
-approximate, especially near zero; exact decimal arithmetic is not claimed.
-Do not use this subset where exact decimal or arbitrary-precision validation
-is required. Object equality ignores key order; array equality preserves order.
+Numbers follow Zap's JSON DOM: i64 integers and binary64 floats. Equality and
+bounds retain exact i64 comparisons, including comparisons against floats.
+Integer `multipleOf` uses exact remainder; floating `multipleOf` allows a relative
+rounding tolerance of two binary64 machine epsilons, rejects nonzero quotients
+rounded to zero, and treats quotient overflow as failure. Decimal arithmetic and
+JSON integers beyond i64 remain subject to binary64 precision limits. See
+[SUPPORT.md](SUPPORT.md) before using decimal or arbitrary-precision constraints.
+Object equality ignores key order; array equality preserves order.
 
 Run `sh tools/run-tests.sh` with a codegen-enabled `zap` on PATH (or set `ZAP`).
 `--check` runs frontend checks only. `sh tools/check-package.sh` checks packaging
 and runs a separate path-dependency consumer. CI runs both with a pinned published
-Zap image. No Python runtime or third-party native extension is required.
+Zap image. `sh tools/run-conformance.sh` compiles the pure-Zap conformance runner,
+executes all required and selected optional groups, and lists optional skips with
+counts and reasons. No Python runtime or third-party native extension is required.
 
 Build sequence (each is an agent-sized M issue):
 

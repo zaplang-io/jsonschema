@@ -6,6 +6,7 @@ trap 'rm -rf "$build"' EXIT HUP INT TERM
 cp "$root/src/jsonschema.zap" "$build/jsonschema.zap"
 mkdir -p "$build/jsonschema"
 cp "$root/src/metaschemas.zap" "$build/jsonschema/metaschemas.zap"
+cp "$root/src/pattern.zap" "$build/jsonschema/pattern.zap"
 for source in "$root"/tests/*_test.zap; do
     cp "$source" "$build/main.zap"
     if [ "${1:-}" = --check ]; then
